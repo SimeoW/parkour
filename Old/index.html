@@ -1,0 +1,384 @@
+<!DOCTYLE html>
+<html>
+<head>
+	<meta charset='utf-8'/>
+	<meta name='viewport' content='user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width'>
+	<style>
+		html {
+			height: 100%;
+			margin: 0;
+			padding: 0px;
+			width: 100%;
+		}
+		body {
+			background-color: #000
+		}
+		canvas {
+			height: 100%;
+			left: 0;
+			position: fixed;
+			top: 0;
+			width: 100%;
+		}
+		#draw {
+			z-index: -1;
+		}
+	</style>
+	<script type='text/javascript' src='lib/three.js'></script>
+	<script type='text/javascript' src='lib/OrbitControls.js'></script>
+	<script type='text/javascript' src='lib/physi.js'></script>
+</head>
+<body>
+	<div id='viewport'></div>
+</body>
+
+<script type='text/javascript'>
+	'use strict';
+	Physijs.scripts.worker = 'lib/physijs_worker.js';
+	Physijs.scripts.ammo='ammo.js';
+
+	let zeroVector = new THREE.Vector3(0, 0, 0);
+
+	let isKeyDown = {};
+	window.onkeyup = function(e) {isKeyDown[e.key] = false; }
+	window.onkeydown = function(e) { isKeyDown[e.key] = true; }
+
+	class Obj {
+
+	}
+
+	// Game class
+	class Game {
+		constructor() {
+			this.objects = {};
+			this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+			this.camera.position.set(15, 60, 15);
+			this.scene =  new Physijs.Scene({ fixedTimeStep: 1 / 30 });
+			//this.scene.background = new THREE.Color(0xAFF8FF);
+			//this.scene.fog = new THREE.Fog(0xAFF8FF, 1000, 5000);
+			//this.scene.add(this.camera);
+			//this.particles = new ParticleEngine();
+			this.initControls();
+			this.initRenderer();
+			this.initPlayer();
+			//this.camera.position = this.player.position
+			this.controls.target = this.player.position;
+
+			this.playerSpeed = 50;
+			this.playerSmooth = 8;
+			this.playerJumpVelocity = 50;
+			this.playerJumping = false;
+			this.gravity = new THREE.Vector3(0, -80, 0);
+			this.paused = false;
+			console.log(this.camera)
+		}
+
+		initPlayer() {
+			var playerGeom = new THREE.Geometry();
+
+			playerGeom.vertices = [
+				new THREE.Vector3(-0.3, -4, 0),
+				new THREE.Vector3(-0.3, 4, 0),
+				new THREE.Vector3(0.3, 4, 0),
+				new THREE.Vector3(0.3, -4, 0),
+				new THREE.Vector3(0, 0, 4)
+			];
+			playerGeom.faces = [
+				new THREE.Face3(0, 1, 2),
+				new THREE.Face3(0, 2, 3),
+				new THREE.Face3(1, 0, 4),
+				new THREE.Face3(2, 1, 4),
+				new THREE.Face3(3, 2, 4),
+				new THREE.Face3(0, 3, 4)
+			];
+			this.player = new Physijs.BoxMesh(
+				playerGeom,
+				Physijs.createMaterial(new THREE.MeshBasicMaterial({ color: 0xffffff }), 0.8, 0.1),
+				50
+			);
+			this.player.position.set(0, 20, 0);
+			//this.player.castShadow = true;
+			this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
+				game.playerJumping = false;
+			});
+			this.player.add(this.camera)
+			this.add(this.player);
+		}
+
+		updatePlayerRotation() {
+			//let vector = game.camera.getWorldDirection(zeroVector.clone());
+			let vector = game.camera.rotation;
+			let theta = Math.atan2(vector.x, vector.z);
+			if (theta < 0) theta += 2 * Math.PI;
+			this.player.rotation.x = 0; // Keep player upright
+			game.player.rotation.y = theta; // Facing against the camera
+			this.player.rotation.z = 0;
+			game.player.__dirtyRotation = true;
+			this.player.setAngularVelocity(zeroVector);
+		}
+
+		playerMovement() {
+			//game.player.__dirtyPosition = true;
+			//this.controls.maxDistance = 2000;
+			if(isKeyDown['w'] == true || isKeyDown['ArrowUp'] == true) { // Up
+				//this.controls.maxDistance = 100; // When moving, follow the player
+				let _v = game.player.getLinearVelocity();
+
+				//let vx = game.player.position.x - game.camera.position.x;
+				//let vz = game.player.position.z - game.camera.position.z;
+				//let dt = Math.sqrt(vx * vx + vz * vz);
+				let vx = game.camera.rotation.x;
+				let vz = game.camera.rotation.z;
+				let dt = Math.sqrt(vx * vx + vz * vz);
+				console.log(game.camera.rotation.x)
+				if(dt != 0) {
+					vx = (_v.x * game.playerSmooth + (game.playerSpeed * vx / dt)) / (game.playerSmooth + 1);
+					vz = (_v.z * game.playerSmooth + (game.playerSpeed * vz / dt)) / (game.playerSmooth + 1);
+					game.player.setLinearVelocity(new THREE.Vector3(vx, _v.y, vz));
+				}
+				game.updatePlayerRotation();
+			}
+			if(isKeyDown['s'] == true || isKeyDown['ArrowDown'] == true) { // Down
+				let _v = game.player.getLinearVelocity();
+				let vx = game.camera.position.x - game.player.position.x;
+				let vz = game.camera.position.z - game.player.position.z;
+				let dt = Math.sqrt(vx * vx + vz * vz);
+				if(dt != 0) {
+					vx = (_v.x * game.playerSmooth + (game.playerSpeed * vx / dt)) / (game.playerSmooth + 1);
+					vz = (_v.z * game.playerSmooth + (game.playerSpeed * vz / dt)) / (game.playerSmooth + 1);
+					game.player.setLinearVelocity(new THREE.Vector3(vx, _v.y, vz));
+				}
+				game.updatePlayerRotation();
+			}
+			if(!game.playerJumping && isKeyDown[' '] == true) { // Spacebar
+				let _v = game.player.getLinearVelocity();
+				game.player.setLinearVelocity(new THREE.Vector3(_v.x, game.playerJumpVelocity, _v.z));
+				game.playerJumping = true;
+			}
+		}
+
+		initControls() {
+			this.controls = new THREE.OrbitControls(this.camera);
+			this.controls.keys = {
+				RIGHT: 37, //left arrow
+				LEFT: 39, // right arrow
+			}
+			this.controls.enableDamping = true;
+			this.controls.dampingFactor = 0.1;
+			this.controls.rotateSpeed = 0.07;
+			//this.controls.keyPanSpeed = 20;
+			this.controls.enableKeys = true;
+			this.controls.minDistance = 0;
+			this.controls.minPolarAngle = 0.01;
+			this.controls.maxPolarAngle = Math.PI - 0.01;
+			this.controls.enablePan = false;
+		}
+
+		initRenderer() { //**************
+			this.renderer = new THREE.WebGLRenderer();
+			this.renderer.setSize(window.innerWidth, window.innerHeight);
+			this.renderer.domElement.id = 'draw';
+			//this.renderer.shadowMap.enabled = true;
+			//this.renderer.shadowMap.type = THREE.BasicShadowMap;
+			//renderer.shadowMapEnabled = true;
+			//renderer.shadowMapSoft = true;
+			document.getElementById('viewport').appendChild(this.renderer.domElement);
+
+			// Keep everything synchronized by rendering after each physics update
+			this.scene.addEventListener('update', function(){
+				game.controls.update();
+				// Keep the player standing up
+				this.player.setAngularVelocity(zeroVector);
+				//game.objects.pointLight.position.set(game.player.position.x, game.player.position.y - 10, game.player.position.z)
+				this.renderer.render(this.scene, this.camera);
+				// Rotating ground
+				game.objects.ground.rotation.y += 0.003;
+				if(game.objects.ground.rotation.y > Math.PI / 2) game.objects.ground.rotation.y -= Math.PI;
+
+				game.objects.ground.__dirtyRotation = true;
+				game.objects.platform1b.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+				game.objects.platform1c.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+				game.objects.platform1d.setLinearVelocity(new THREE.Vector3(0, 0, 0));
+			}.bind(this)); // Binding this gives us access to the same this as before
+		}
+
+		get gravity(){ return this._gravity; }
+		set gravity(vector) {
+			this._gravity = vector;
+			this.scene.setGravity(vector);
+		}
+		
+		get paused(){ return this._paused; }
+		set paused(bool) {
+			if(!bool) this.scene.onSimulationResume();
+			this._paused = bool;
+		}
+
+		// Physics for a single frame
+		simulate() {
+			if(!this.paused){
+				this.scene.simulate();
+				game.playerMovement();
+			} else {
+				game.controls.update();
+				this.renderer.render(this.scene, this.camera);
+			}
+			//this.controls.target = this.player.position;
+			//this.camera.lookAt(this.player.position);
+			//this.camera.rotation = this.fakeCamera.rotation;
+
+			if(this.player.position.y < -1000) {
+				// Reset position?
+				this.player.position.set(0, 20, 0);
+				this.updatePlayerRotation();
+			}
+		}
+
+		add(object) {
+			this.scene.add(object);
+			//object.__dirtyPosition = true;
+			//object.__dirtyRotation = true;
+		}
+		
+		addCube(name, position, scale, rotation, color, friction, restitution, mass) {
+			let cube = new Physijs.BoxMesh(
+				new THREE.CubeGeometry(scale.l, scale.h, scale.w),
+				Physijs.createMaterial(new THREE.MeshLambertMaterial({ color: color }), friction, restitution),
+				mass
+			);
+			cube.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
+			cube.position.set(position.x, position.y, position.z);
+			cube.receiveShadow = true;
+			if(mass != 0) cube.castShadow = true; // Ignore static objects
+			this.objects[name] = cube;
+			this.add(cube);
+			return cube;
+		}
+
+		addSphere(name, position, radius, color, friction, restitution, mass) {
+			let sphere = new Physijs.SphereMesh(
+				new THREE.SphereGeometry(radius),
+				Physijs.createMaterial(new THREE.MeshLambertMaterial({ color: color, wireframe: true }), friction, restitution),
+				mass
+			);
+			sphere.position.set(position.x, position.y, position.z);
+			sphere.receiveShadow = true;
+			sphere.castShadow = true; // Ignore static objects
+			this.objects[name] = sphere;
+			this.add(sphere);
+			return sphere;
+		}
+
+		addPlane(name, position, width, height, rotation, color, friction, restitution) {
+			let plane = new Physijs.PlaneMesh(
+				new THREE.PlaneGeometry(width, height),
+				Physijs.createMaterial(new THREE.MeshBasicMaterial({color: color, side: THREE.DoubleSide}), friction, restitution)
+			);
+			plane.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
+			plane.position.set(position.x, position.y, position.z);
+			//plane.receiveShadow = true;
+			//plane.castShadow = true;
+			this.objects[name] = plane;
+			this.add(plane);
+			return plane;
+			//this.objects.ground.rotation.x = (Math.PI / 2) * 3;
+		}
+
+		addSkybox(name, texture, size) {
+			var materialArray = [];
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-xpos.png' ) }));
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-xneg.png' ) }));
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-ypos.png' ) }));
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-yneg.png' ) }));
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-zpos.png' ) }));
+			materialArray.push(new THREE.MeshBasicMaterial( { map: THREE.ImageUtils.loadTexture( 'skyboxes/' + texture + '-zneg.png' ) }));
+			for (var i = 0; i < 6; i++)  {
+				materialArray[i].side = THREE.BackSide;
+			}
+			var skyboxMaterial = new THREE.MeshFaceMaterial(materialArray);
+			var skyboxGeom = new THREE.CubeGeometry(size, size, size, 1, 1, 1);
+			var skybox = new THREE.Mesh(skyboxGeom, skyboxMaterial);
+			this.objects[name] = skybox;
+			this.add(skybox);
+			return skybox;
+		}
+	}
+
+
+	const game = new Game();
+
+	window.onload = function() {
+		game.objects.ambientLight = new THREE.AmbientLight(0xFFCCCC, 0.8);
+		game.add(game.objects.ambientLight);
+
+		//game.objects.pointLight = new THREE.PointLight(0xff3300, 0.1, 100);
+		//game.objects.pointLight.position.set(0, 20, 0);
+		//game.objects.pointLight.castShadow = true;
+		//game.add(game.objects.pointLight);
+
+		game.objects.directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+		game.objects.directionalLight.position.set(5000, 10000, 0);
+		game.add(game.objects.directionalLight);
+
+
+		let friction = 0.9;
+		let restitution = 0.3;
+		game.addSkybox('skybox', 'nebula',5000)
+		game.addCube('platform1a', {x:0,y:0,z:0}, {l:30,h:20,w:30}, {x:0,y:0,z:0}, Math.random() * 0xffffff, friction, restitution, 0);
+		game.addCube('platform1b', {x:0,y:-10,z:-90}, {l:50,h:50,w:50}, {x:0,y:0,z:0}, Math.random() * 0xffffff, friction, restitution, 10);
+		game.addCube('platform1c', {x:0,y:-40,z:-150}, {l:30,h:20,w:30}, {x:0,y:0,z:0}, Math.random() * 0xffffff, friction, restitution, 10);
+		game.addCube('platform1d', {x:0,y:-100,z:-250}, {l:70,h:70,w:70}, {x:0,y:0,z:0}, Math.random() * 0xffffff, friction, restitution, 1000);
+		game.addCube('platform2', {x:20,y:-10,z:0}, {l:60,h:20,w:30}, {x:0,y:45,z:0}, 0xff3366, friction, restitution, 0);
+		game.addSphere('sphere1', {x:20,y:10,z:-8}, 4, 0x000000, friction, restitution);
+		game.addCube('platform3', {x:20,y:-50,z:0}, {l:100,h:5,w:60}, {x:0,y:45,z:10}, 0x3366ff, friction, restitution, 0);
+		game.addCube('platform4', {x:20,y:-100,z:0}, {l:20,h:60,w:200}, {x:30,y:40,z:90}, 0x6633ff, friction, restitution, 0);
+		game.addCube('platform5', {x:0,y:-10,z:50}, {l:30,h:50,w:30}, {x:0,y:0,z:0}, 0xffffff, friction, restitution, 0);
+		game.addCube('platform6', {x:50,y:-30,z:0}, {l:30,h:20,w:30}, {x:0,y:0,z:0}, 0xffffff, friction, restitution, 0);
+		game.addCube('ground', {x:0,y:-160,z:0}, {l:400,h:20,w:1200}, {x:0,y:0,z:0}, 0x143D28, friction, restitution, 0);
+		game.addCube('platform8', {x:250,y:-100,z:0}, {l:300,h:20,w:300}, {x:0,y:0,z:25}, 0x333333, friction, restitution, 0);
+		game.addCube('platform9', {x:-250,y:-100,z:0}, {l:300,h:20,w:300}, {x:0,y:0,z:-25}, 0x333333, friction, restitution, 0);
+		for(var z = -130; z <= 130; z += 25) {
+			game.addSphere('sphere', {x:-250,y:-20,z:z}, 9, Math.random() * 0xffffff, friction, restitution, Math.random());
+			game.addCube('cube', {x:250,y:-21,z:z}, {l:10,h:10,w:10}, {x:Math.random(),y:Math.random(),z:Math.random()}, Math.random() * 0xffffff, friction, restitution, Math.random() / 10);
+		}
+		//game.addPlane('plane', {x:0,y:-600,z:0}, 15000, 15000, {x:270,y:0,z:0}, 0x0B1726, 0, 0);
+		GameLoop();
+	}
+
+	// Main loop
+	let GameLoop = function() {
+		requestAnimationFrame(GameLoop);
+		game.simulate();
+	}
+
+	/*document.addEventListener('mousedown', onMouseDown, false);
+	function onMouseDown(e) {
+		var vectorMouse = new THREE.Vector3(//vector from camera to mouse
+			-(window.innerWidth / 2 - e.clientX) * 2 / window.innerWidth,
+			(window.innerHeight / 2 - e.clientY) * 2 / window.innerHeight,
+			-1 / Math.tan(22.5 * Math.PI / 180)
+		); //22.5 is half of camera frustum angle 45 degree
+		vectorMouse.applyQuaternion(game.camera.quaternion);
+		vectorMouse.normalize();
+		var vectorObject = new THREE.Vector3(); //vector from camera to object
+		vectorObject.set(
+			object.x - game.camera.position.x,
+			object.y - game.camera.position.y,
+			object.z - game.camera.position.z
+		);
+		vectorObject.normalize();
+		if(vectorMouse.angleTo(vectorObject) * 180 / Math.PI < 1) {
+			
+			//mouse's position is near object's position
+		}
+	}*/
+
+	// On window resize, resize the renderer as well
+	window.addEventListener('resize', onWindowResize, false);
+	function onWindowResize(){
+		game.camera.aspect = window.innerWidth / window.innerHeight;
+		game.camera.updateProjectionMatrix();
+		game.renderer.setSize(window.innerWidth, window.innerHeight);
+	}
+</script>
+</html>
