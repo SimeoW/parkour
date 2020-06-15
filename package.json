@@ -1,6 +1,25 @@
 {
-	"name": "parkour",
-	"version": "0.0.1",
-	"description": "my first socket.io app",
-	"dependencies": {}
+  "name": "parkourengine",
+  "version": "1.0.0",
+  "description": "The makings of 3D Parkour",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.17.1",
+    "sanitize-html": "1.26.0",
+    "socket.io": "^2.3.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Simeon",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SimeoW/parkour.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SimeoW/parkour/issues"
+  },
+  "homepage": "https://github.com/SimeoW/parkour#readme"
 }

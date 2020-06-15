@@ -1,0 +1,10 @@
+{
+	"spawn": [0, 10, 0],
+	"gravity": [0, -50, 0],
+	"objects": [
+		["ambience", "", "0xFFCCCC", 0.8],
+		["directionallight", "", [5000, 10000, 0], "0xFFFFFF", 0.9],
+		["skybox", "", "nebula", 5000],
+		["cube", "ground", [0, 0, 0], [100, 0, 100], [0, 0, 0], "0x143D28", 0.9, 0.3, 0]
+	]
+}
