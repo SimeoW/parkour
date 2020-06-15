@@ -11,10 +11,9 @@ const zeroVector = new THREE.Vector3(0, 0, 0);
 class Game {
 	constructor() {
 
-		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
-		this.camera.position.set(0, 100, -100);
+		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
 
-		this.scene = new Physijs.Scene({ fixedTimeStep: 1 / 30 });
+		this.scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
 
 		this.server_name = null;
 		this.player_name = null;
@@ -28,10 +27,11 @@ class Game {
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
 		this.renderer.setClearColor(new THREE.Color(0x101010), 1);
 		this.renderer.domElement.id = 'draw';
-		//this.renderer.shadowMap.enabled = true;
-		//this.renderer.shadowMap.type = THREE.BasicShadowMap;
-		//renderer.shadowMapEnabled = true;
-		//renderer.shadowMapSoft = true;
+
+		this.renderer.shadowMap.enabled = true;
+		this.renderer.shadowMap.type = THREE.BasicShadowMap;
+		//this.renderer.shadowMapEnabled = true;
+		//this.renderer.shadowMapSoft = true;
 		document.getElementById('viewport').appendChild(this.renderer.domElement);
 
 		// Keep everything synchronized by rendering after each physics update
@@ -66,11 +66,17 @@ class Game {
 		// Remove the old player if not done already
 		if(this.player != null) this.scene.remove(this.player);
 		if(this.spawn === undefined) this.spawn = zeroVector;
-
-		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y, this.spawn.z), {l: 1, w: 1, h: 1}, zeroVector, 0xFFFFFF, 0.8, 0.1, 50);
+		let l = 1, w = 1, h = 1;
+		let color = 0xFFFFFF;
+		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y, this.spawn.z), {l: l, w: w, h: h}, zeroVector, color, 0.8, 0.1, 30);
+		this.player.speedSmoothing = 2;
+		this.player.speed = 30;
+		this.player.jumping = false;
+		this.player.jumpVelocity = Math.sqrt(this.gravity.x * this.gravity.x + this.gravity.y * this.gravity.y + this.gravity.z * this.gravity.z);
 		this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
-			game.playerJumping = false;
+			game.player.jumping = false;
 		});
+		this.controls.position = new THREE.Vector3(0, 80, -50);
 	}
 
 	// Physics for a single frame
@@ -80,8 +86,8 @@ class Game {
 
 		if(!this.paused) {
 			this.scene.simulate();
-			this.playerMovement();
 			this.updateControls();
+			this.playerMovement();
 		} else {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
@@ -95,6 +101,52 @@ class Game {
 	playerMovement() {
 		if(this.player == null) return;
 		this.controls.target = this.player.position;
+		if(!this.player.jumping && this.input.down('up_arrow') || this.input.down('w')) {
+			this.updatePlayerRotation();
+			let vx = game.player.position.x - game.camera.position.x;
+			let vz = game.player.position.z - game.camera.position.z;
+			let dt = Math.sqrt(vx * vx + vz * vz);
+			if(dt != 0) {
+				//let p = this.player.position;
+				//let px = p.x + this.player.speed * vx / dt; 
+				//let pz = p.z + this.player.speed * vz / dt; 
+				//this.player.__dirtyPosition = true;
+				//this.player.position.set(px, p.y, pz);
+				let v = this.player.getLinearVelocity();
+				vx = (v.x * this.player.speedSmoothing + (this.player.speed * vx / dt)) / (this.player.speedSmoothing + 1);
+				vz = (v.z * this.player.speedSmoothing + (this.player.speed * vz / dt)) / (this.player.speedSmoothing + 1);
+				this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+			}
+		}
+		if(!this.player.jumping && this.input.down('space')) {
+			let v = this.player.getLinearVelocity();
+			if(v.y < 0) v.y = 0;
+			this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity, v.z));
+			this.player.jumping = true;
+		}
+		if(this.player.position.y < this.respawnHeight) {
+			this.scene.remove(this.player);
+			this.player = null;
+			setTimeout(function() {
+				this.initializePlayer();
+			}.bind(this), 1000);
+		}
+	}
+
+	// Set the player's rotation to the camera direction
+	updatePlayerRotation() {
+		//let vector = game.camera.getWorldDirection(zeroVector.clone());
+		//let vector = game.camera.rotation;
+		let vx = game.player.position.x - game.camera.position.x;
+		let vz = game.player.position.z - game.camera.position.z;
+		let dt = Math.sqrt(vx * vx + vz * vz);
+		let theta = Math.atan2(vx, vz);
+		if (theta < 0) theta += 2 * Math.PI;
+		this.player.rotation.x = 0; // Keep player upright
+		this.player.rotation.y = theta; // Facing against the camera
+		this.player.rotation.z = 0;
+		this.player.__dirtyRotation = true;
+		//this.player.setAngularVelocity(zeroVector);
 	}
 
 	// Handle the camera orbit
@@ -188,10 +240,159 @@ class Game {
 		if(map['gravity'] !== undefined && map.gravity.length == 3) {
 			this.gravity = new THREE.Vector3(map.gravity[0], map.gravity[1], map.gravity[2]);
 		} else return false;
+
+		this.respawnHeight = Infinity;
 		
 		// Add each object one by one
 		for(let object of map.objects) {
-			let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector;
+			let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector, minHeight;
+			type = object[0];
+			if(typeof type != 'string') continue;
+			name = object[1];
+			if(typeof name != 'string') continue;
+			if(name.trim() == "") name = type; // Set the default to the type
+
+			console.log(`Started  loading "${name}"`);
+			switch(type) {
+				case 'cube':
+					if(object.length != 9) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					scale = object[3];
+					if(scale.length != 3) continue;
+					rotation = object[4];
+					if(rotation.length != 3) continue;
+					rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
+					color = object[5];
+					if(typeof color != 'string') continue;
+					friction = object[6];
+					if(typeof friction != 'number') continue;
+					restitution = object[7];
+					if(typeof restitution != 'number') continue;
+					mass = object[8];
+					if(typeof mass != 'number') continue;
+					this.addCube(name, positionVector, scale, rotationVector, color, friction, restitution, mass);
+					
+					minHeight = positionVector.y - scale[1] / 2;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
+					break;
+
+				case 'sphere':
+					if(object.length != 8) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					radius = object[3];
+					if(typeof radius != 'number') continue;
+					color = object[4];
+					if(typeof color != 'string') continue;
+					friction = object[5];
+					if(typeof friction != 'number') continue;
+					restitution = object[6];
+					if(typeof restitution != 'number') continue;
+					mass = object[7];
+					if(typeof mass != 'number') continue;
+					this.addSphere(name, positionVector, radius, color, friction, restitution, mass);
+					
+					minHeight = positionVector.y - radius;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
+					break;
+
+				case 'plane':
+					if(object.length != 9) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					width = object[3];
+					if(typeof width != 'number') continue;
+					height = object[4];
+					if(typeof height != 'number') continue;
+					rotation = object[5];
+					if(rotation.length != 3) continue;
+					rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
+					color = object[6];
+					if(typeof color != 'string') continue;
+					friction = object[7];
+					if(typeof friction != 'number') continue;
+					restitution = object[8];
+					if(typeof restitution != 'number') continue;
+					this.addPlane(name, positionVector, width, height, rotationVector, color, friction, restitution);
+					
+					minHeight = positionVector.y;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
+					break;
+
+				case 'skybox':
+					if(object.length != 4) continue;
+					texture = object[2];
+					if(typeof texture != 'string') continue;
+					size = object[3];
+					if(typeof size != 'number') continue;
+					this.addSkybox(name, texture, size);
+					break;
+
+				case 'pointlight':
+					if(object.length != 6) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					color = object[3];
+					if(typeof color != 'string') continue;
+					distance = object[4];
+					if(typeof distance != 'number') continue;
+					decay = object[5];
+					if(typeof decay != 'number') continue;
+					this.addPointLight(name, positionVector, color, distance, decay);
+					break;
+
+				case 'ambientlight':
+					if(object.length != 4) continue;
+					color = object[2];
+					if(typeof color != 'string') continue;
+					intensity = object[3];
+					if(typeof intensity != 'number') continue;
+					this.addAmbientLight(name, color, intensity);
+					break;
+
+				case 'directionallight':
+					if(object.length != 5) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					color = object[3];
+					if(typeof color != 'string') continue;
+					intensity = object[4];
+					if(typeof intensity != 'number') continue;
+					this.addDirectionalLight(name, positionVector, color, intensity);
+					break;
+
+				default:
+					console.log(`Unknown object "${name}"`);
+					continue;
+			}
+
+			console.log(`Finished loading "${name}"`);
+		}
+		this.respawnHeight -= 30;
+		this.initializePlayer();
+	}
+
+
+	// Save map to JSON object
+	saveMap() {
+		let map = {};
+		map.spawn = [this.spawn.x, this.spawn.y, this.spawn.z];
+		map.gravity = [this.gravity.x, this.gravity.y, this.gravity.z];
+
+		for(object of this.objects) {
+
+		}
+////////////////////////////////////
+		/*
+		// Add each object one by one
+		for(let object of map.objects) {
+			let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector, minHeight;
 			type = object[0];
 			if(typeof type != 'string') continue;
 			name = object[1];
@@ -220,6 +421,9 @@ class Game {
 					if(typeof mass != 'number') continue;
 					colorNum = parseInt(color);
 					this.addCube(name, positionVector, scale, rotationVector, colorNum, friction, restitution, mass);
+					
+					minHeight = positionVector.y - scale[1] / 2;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 					break;
 
 				case 'sphere':
@@ -239,6 +443,9 @@ class Game {
 					if(typeof mass != 'number') continue;
 					colorNum = parseInt(color);
 					this.addSphere(name, positionVector, radius, colorNum, friction, restitution, mass);
+					
+					minHeight = positionVector.y - radius / 2;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 					break;
 
 				case 'plane':
@@ -261,6 +468,9 @@ class Game {
 					if(typeof restitution != 'number') continue;
 					colorNum = parseInt(color);
 					this.addPlane(name, positionVector, width, height, rotationVector, colorNum, friction, restitution);
+					
+					minHeight = positionVector.y;
+					if(minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 					break;
 
 				case 'skybox':
@@ -272,7 +482,22 @@ class Game {
 					this.addSkybox(name, texture, size);
 					break;
 
-				case 'ambience':
+				case 'pointlight':
+					if(object.length != 6) continue;
+					position = object[2];
+					if(position.length != 3) continue;
+					positionVector = new THREE.Vector3(position[0], position[1], position[2])
+					color = object[3];
+					if(typeof color != 'string') continue;
+					distance = object[4];
+					if(typeof distance != 'number') continue;
+					decay = object[5];
+					if(typeof decay != 'number') continue;
+					colorNum = parseInt(color);
+					this.addPointLight(name, positionVector, colorNum, distance, decay);
+					break;
+
+				case 'ambientlight':
 					if(object.length != 4) continue;
 					color = object[2];
 					if(typeof color != 'string') continue;
@@ -302,7 +527,7 @@ class Game {
 
 			console.log(`Finished loading "${name}"`);
 		}
-		this.initializePlayer();
+		*/
 	}
 
 	add(object) {
@@ -314,16 +539,18 @@ class Game {
 	addCube(name, position, scale, rotation, color, friction, restitution, mass) {
 		let cube = new Physijs.BoxMesh(
 			new THREE.CubeGeometry(scale[0], scale[1], scale[2]),
-			Physijs.createMaterial(new THREE.MeshLambertMaterial({
-				color: color
+			Physijs.createMaterial(new THREE.MeshStandardMaterial({
+				color: new THREE.Color(color),
+				roughness: 0.1
 			}), friction, restitution),
 			mass
 		);
-		cube.name = name;
+		cube.meshName = name;
+		cube.meshType = 'cube';
 		cube.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
 		cube.position.set(position.x, position.y, position.z);
 		cube.receiveShadow = true;
-		if(mass != 0) cube.castShadow = true; // Ignore static objects
+		cube.castShadow = true;
 		this.objects.push(cube);
 		this.add(cube);
 		return cube;
@@ -333,15 +560,17 @@ class Game {
 		let sphere = new Physijs.SphereMesh(
 			new THREE.SphereGeometry(radius),
 			Physijs.createMaterial(new THREE.MeshStandardMaterial({
-				color: color,
-				wireframe: true
+				color: new THREE.Color(color),
+				roughness: 0.1,
+				flatShading: true,
 			}), friction, restitution),
 			mass
 		);
-		sphere.name = name;
+		sphere.meshName = name;
+		sphere.meshType = 'sphere';
 		sphere.position.set(position.x, position.y, position.z);
 		sphere.receiveShadow = true;
-		sphere.castShadow = true; // Ignore static objects
+		sphere.castShadow = true;
 		this.objects.push(sphere);
 		this.add(sphere);
 		return sphere;
@@ -349,15 +578,15 @@ class Game {
 	
 	// TODO: Apply scale, rotation, ...
 	addPlayer(name, position, scale, rotation, color, friction = 0.8, restitution = 0.1, mass = 50) {
-		let playerGeom = new THREE.Geometry();
-		playerGeom.vertices = [
+		let playerGeometry = new THREE.Geometry();
+		playerGeometry.vertices = [
 			new THREE.Vector3(-0.3, -4, 0),
 			new THREE.Vector3(-0.3, 4, 0),
 			new THREE.Vector3(0.3, 4, 0),
 			new THREE.Vector3(0.3, -4, 0),
 			new THREE.Vector3(0, 0, 4)
 		];
-		playerGeom.faces = [
+		playerGeometry.faces = [
 			new THREE.Face3(0, 1, 2),
 			new THREE.Face3(0, 2, 3),
 			new THREE.Face3(1, 0, 4),
@@ -365,13 +594,18 @@ class Game {
 			new THREE.Face3(3, 2, 4),
 			new THREE.Face3(0, 3, 4)
 		];
+		let playerMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(color) });
+		playerMaterial.depthTest = false;
+
 		let player = new Physijs.BoxMesh(
-			playerGeom,
-			Physijs.createMaterial(new THREE.MeshBasicMaterial({ color: color }), friction, restitution),
+			playerGeometry,
+			Physijs.createMaterial(playerMaterial, friction, restitution),
 			mass
 		);
-		player.name = name;
+		player.meshName = name;
+		player.meshType = 'player';
 		player.position.set(position.x, position.y, position.z);
+		player.castShadow = true;
 		//player.castShadow = true;
 		
 		this.add(player);
@@ -381,12 +615,13 @@ class Game {
 	addPlane(name, position, width, height, rotation, color, friction, restitution) {
 		let plane = new Physijs.PlaneMesh(
 			new THREE.PlaneGeometry(width, height),
-			Physijs.createMaterial(new THREE.MeshBasicMaterial({
-				color: color,
+			Physijs.createMaterial(new THREE.MeshStandardMaterial({
+				color: new THREE.Color(color),
 				side: THREE.DoubleSide
 			}), friction, restitution)
 		);
-		plane.name = name;
+		plane.meshName = name;
+		plane.meshType = 'plane';
 		plane.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
 		plane.position.set(position.x, position.y, position.z);
 		//plane.receiveShadow = true;
@@ -421,16 +656,17 @@ class Game {
 		}
 		let skyboxGeometry = new THREE.CubeGeometry(size, size, size, 1, 1, 1);
 		let skybox = new THREE.Mesh(skyboxGeometry, materialArray);
-		skybox.name = name;
+		skybox.meshName = name;
+		skybox.meshType = 'skybox';
 		this.objects.push(skybox);
 		this.add(skybox);
 		return skybox;
 	}
 
-	// TODO: Implement
 	addPointLight(name, position, color, distance, decay) {
-		let light = new THREE.AmbientLight(color, distance, decay);
-		light.name = name;
+		let light = new THREE.PointLight(new THREE.Color(color), distance, decay);
+		light.meshName = name;
+		light.meshType = 'pointlight';
 		light.position.set(position.x, position.y, position.z);
 		this.objects.push(light);
 		this.add(light);
@@ -438,16 +674,18 @@ class Game {
 	}
 
 	addAmbientLight(name, color, intensity) {
-		let light = new THREE.AmbientLight(color, intensity);
-		light.name = name;
+		let light = new THREE.AmbientLight(new THREE.Color(color), intensity);
+		light.meshName = name;
+		light.meshType = 'ambientlight';
 		this.objects.push(light);
 		this.add(light);
 		return light;
 	}
 
 	addDirectionalLight(name, position, color, intensity) {
-		let light = new THREE.AmbientLight(color, intensity);
-		light.name = name;
+		let light = new THREE.DirectionalLight(0xffffff, intensity);
+		light.meshName = name;
+		light.meshType = 'directionallight';
 		light.position.set(position.x, position.y, position.z);
 		this.objects.push(light);
 		this.add(light);

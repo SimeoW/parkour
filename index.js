@@ -53,11 +53,16 @@ function getRoomList() {
 function loadJsonFile(path, callback) {
 	try {
 		fs.readFile(path, 'utf8', (err, map) => {
-			if(err) {
-				console.log('File read failed: ', err);
+			try {
+				if(err) {
+					console.log('File read failed: ', err);
+					callback(null);
+				}
+				callback(JSON.parse(map));
+			} catch(e) {
+				console.log(`Error reading "${path}": ${e}`);
 				callback(null);
 			}
-			callback(JSON.parse(map));
 		});
 	} catch(e) {
 		console.log(`Error reading "${path}": ${e}`);
@@ -102,10 +107,14 @@ io.on('connection', (socket, name) => {
 					"spawn": [0, 10, 0],
 					"gravity": [0, -50, 0],
 					"objects": [
-						["ambience", "", "0xFFCCCC", 0.8],
-						["directionallight", "", [5000, 10000, 0], "0xFFFFFF", 0.9],
-						["skybox", "", "nebula", 5000],
-						["cube", "ground", [0, 0, 0], [100, 0, 100], [0, 0, 0], "0x143D28", 0.9, 0.3, 0]
+						["ambientlight", "", "rgb(255,255,255)", 0.8],
+						["directionallight", "", [5000, 10000, 0], "rgb(255,0,0)", 1],
+						["skybox", "", "nebula", 10000],
+						["cube", "", [0, -50, 0], [100, 100, 100], [0, 0, 0], "rgb(55,158,57)", 0.9, 0.3, 0],
+						["cube", "", [75, -75, 0], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
+						["cube", "", [-75, -75, 0], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
+						["cube", "", [0, -75, 75], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
+						["cube", "", [0, -75, -75], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
 					]
 				}
 			}
