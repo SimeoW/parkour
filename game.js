@@ -1,11 +1,3 @@
-/*let isKeyDown = {};
-window.onkeyup = function(e) {
-	isKeyDown[e.key] = false;
-}
-window.onkeydown = function(e) {
-	isKeyDown[e.key] = true;
-}*/
-
 const zeroVector = new THREE.Vector3(0, 0, 0);
 
 class Game {
@@ -13,7 +5,7 @@ class Game {
 
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
 
-		this.scene = new Physijs.Scene({ fixedTimeStep: 1 / 60 });
+		this.scene = new Physijs.Scene({ fixedTimeStep: 1 / 30 });
 
 		this.server_name = null;
 		this.player_name = null;
@@ -72,7 +64,7 @@ class Game {
 		this.player.speedSmoothing = 2;
 		this.player.speed = 30;
 		this.player.jumping = false;
-		this.player.jumpVelocity = Math.sqrt(this.gravity.x * this.gravity.x + this.gravity.y * this.gravity.y + this.gravity.z * this.gravity.z);
+		this.player.jumpVelocity = 150;
 		this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 			game.player.jumping = false;
 		});
@@ -85,44 +77,79 @@ class Game {
 		this.deltaTime = (this.currentFrameTime - this.prevFrameTime) / 1000;
 
 		if(!this.paused) {
-			this.scene.simulate();
 			this.updateControls();
 			this.playerMovement();
+			this.scene.simulate();
 		} else {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
 		}
 
+		this.input.endFrame();
 		this.prevFrameTime = this.currentFrameTime;
 		requestAnimationFrame(this.step.bind(this));
+	}
+
+	// Handle the camera orbit
+	updateControls() {
+		let rotateCamera = this.input.mouseDown(this.input.MouseButtons.left);
+		let moveCamera = false;
+		let mouseDelta = this.input.mouseDelta;
+		let zoom = this.input.mouseWheel;
+		console.log(this.input)
+		if(this.input.down('subtract') || this.input.down('page_down')) zoom += 10;
+		else if(this.input.down('add') || this.input.down('page_up')) zoom -= 10;
+
+		if(this.input.down('left_arrow') || this.input.down('a')) {
+			rotateCamera = true;
+			mouseDelta.x -= 5;
+		}
+		if(this.input.down('right_arrow') || this.input.down('d')) {
+			rotateCamera = true;
+			mouseDelta.x += 5;
+		}
+
+		let controllerInput = {
+			deltaTime: this.deltaTime,                                      // time passed, in seconds, since last update call
+			rotateHorizontally: rotateCamera ? -mouseDelta.x : 0,                    // rotation around y axis
+			rotateVertically: rotateCamera ? -mouseDelta.y : 0,                        // rotate vertically around x / z axis
+			moveOffsetVertically: (moveCamera ? -mouseDelta.y : 0) * 10,                               // move the target offset (affect lookat AND camera position), along camera's Y axis. 
+			moveOffsetHorizontally: (moveCamera ? mouseDelta.x : 0) * 10,                            // move the target offset left / right, relative to camera's world direction.
+			zoom: zoom * 10,                                                // zoom in / out
+		}
+		this.controls.update(controllerInput);
 	}
 
 	// Handle the player's movement
 	playerMovement() {
 		if(this.player == null) return;
 		this.controls.target = this.player.position;
-		if(!this.player.jumping && this.input.down('up_arrow') || this.input.down('w')) {
-			this.updatePlayerRotation();
-			let vx = game.player.position.x - game.camera.position.x;
-			let vz = game.player.position.z - game.camera.position.z;
-			let dt = Math.sqrt(vx * vx + vz * vz);
-			if(dt != 0) {
-				//let p = this.player.position;
-				//let px = p.x + this.player.speed * vx / dt; 
-				//let pz = p.z + this.player.speed * vz / dt; 
-				//this.player.__dirtyPosition = true;
-				//this.player.position.set(px, p.y, pz);
-				let v = this.player.getLinearVelocity();
-				vx = (v.x * this.player.speedSmoothing + (this.player.speed * vx / dt)) / (this.player.speedSmoothing + 1);
-				vz = (v.z * this.player.speedSmoothing + (this.player.speed * vz / dt)) / (this.player.speedSmoothing + 1);
-				this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+		if(!this.player.jumping) {
+			if(this.input.down('up_arrow') || this.input.down('w')) {
+				this.updatePlayerRotation();
+				let vx = game.player.position.x - game.camera.position.x;
+				let vz = game.player.position.z - game.camera.position.z;
+				let dt = Math.sqrt(vx * vx + vz * vz);
+				if(dt != 0) {
+					//let p = this.player.position;
+					//let px = p.x + this.player.speed * vx / dt; 
+					//let pz = p.z + this.player.speed * vz / dt; 
+					//this.player.__dirtyPosition = true;
+					//this.player.position.set(px, p.y, pz);
+					
+					console.log(this.deltaTime)
+					let v = this.player.getLinearVelocity();
+					vx = (v.x * this.player.speedSmoothing + (this.player.speed * vx / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
+					vz = (v.z * this.player.speedSmoothing + (this.player.speed * vz / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
+					this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+				}
 			}
-		}
-		if(!this.player.jumping && this.input.down('space')) {
-			let v = this.player.getLinearVelocity();
-			if(v.y < 0) v.y = 0;
-			this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity, v.z));
-			this.player.jumping = true;
+			if(this.input.down('space')) {
+				let v = this.player.getLinearVelocity();
+				if(v.y < 0) v.y = 0;
+				this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
+				this.player.jumping = true;
+			}
 		}
 		if(this.player.position.y < this.respawnHeight) {
 			this.scene.remove(this.player);
@@ -147,27 +174,6 @@ class Game {
 		this.player.rotation.z = 0;
 		this.player.__dirtyRotation = true;
 		//this.player.setAngularVelocity(zeroVector);
-	}
-
-	// Handle the camera orbit
-	updateControls() {
-		let rotateCamera = this.input.mouseDown(this.input.MouseButtons.left);
-		let moveCamera = false;
-		let mouseDelta = this.input.mouseDelta;
-		let zoom = this.input.mouseWheel;
-		if (this.input.down('page_up')) zoom += 10;
-		else if (this.input.down('page_down')) zoom -= 10;
-
-		let controllerInput = {
-			deltaTime: this.deltaTime,                                      // time passed, in seconds, since last update call
-			rotateHorizontally: rotateCamera ? -mouseDelta.x : 0,                    // rotation around y axis
-			rotateVertically: rotateCamera ? -mouseDelta.y : 0,                        // rotate vertically around x / z axis
-			moveOffsetVertically: (moveCamera ? -mouseDelta.y : 0) * 10,                               // move the target offset (affect lookat AND camera position), along camera's Y axis. 
-			moveOffsetHorizontally: (moveCamera ? mouseDelta.x : 0) * 10,                            // move the target offset left / right, relative to camera's world direction.
-			zoom: zoom * 10,                                                // zoom in / out
-		}
-		this.controls.update(controllerInput);
-		this.input.endFrame();
 	}
 
 	// Get/set gravity
