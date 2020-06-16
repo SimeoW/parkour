@@ -62,7 +62,7 @@ class Game {
 		if(this.spawn === undefined) this.spawn = zeroVector;
 		let l = 1, w = 1, h = 1;
 		let color = 0xFFFFFF;
-		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x + Math.random() * 2 - 1, this.spawn.y, this.spawn.z + Math.random() * 2 - 1), {l: l, w: w, h: h}, zeroVector, color, 0.8, 0.1, 30);
+		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x + Math.random() * 10 - 5, this.spawn.y, this.spawn.z + Math.random() * 10 - 5), {l: l, w: w, h: h}, zeroVector, color, 0.8, 0.1, 30);
 		this.player.speedSmoothing = 2;
 		this.player.speed = 30;
 		this.player.jumping = false;
@@ -314,7 +314,7 @@ class Game {
 		
 		// Add each object one by one
 		for(let object of map.objects) {
-			let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector, minHeight, fileType;
+			let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector, minHeight, fileType, width, height;
 			type = object[0];
 			if(typeof type != 'string') continue;
 			name = object[1];
@@ -378,6 +378,7 @@ class Game {
 					height = object[4];
 					if(typeof height != 'number') continue;
 					rotation = object[5];
+					console.log('Plane')
 					if(rotation.length != 3) continue;
 					rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
 					color = object[6];
