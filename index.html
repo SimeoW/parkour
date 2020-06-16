@@ -28,6 +28,8 @@
     <script type='text/javascript' src='lib/physi.js'></script>
     <script type='text/javascript' src='lib/stinput.js'></script>
     <script type='text/javascript' src='lib/camera_orbit.js'></script>
+    <script type='text/javascript' src='lib/text_texture.js'></script>
+    <script type='text/javascript' src='lib/text_sprite.js'></script>
     <script type='text/javascript' src='socket.io/socket.io.js'></script>
   </head>
   <body>
@@ -39,7 +41,15 @@
     Physijs.scripts.worker = 'lib/physijs_worker.js';
     Physijs.scripts.ammo='ammo.js';
     
-    const player_name = 'Guest';
+
+    let player_name = 'Guest';
+    if(localStorage.getItem('playerName') == null) {
+      player_name = prompt('Welcome! What is your name?', player_name) || player_name;
+      localStorage.setItem('playerName', player_name);
+    } else {
+      player_name = prompt('Welcome! What is your name?', localStorage.getItem('playerName')) || player_name;
+      localStorage.setItem('playerName', player_name);
+    }
     const server_name = '';
 
     const game = new Game();
@@ -54,53 +64,3 @@
     }
   </script>
 </html>
-
-      let name = null, room, socket;
-
-      function init() {
-        name = (prompt('Hi! What is your name?', 'Guest') || 'Guest');
-        room = (prompt('What room would you like to join?', '') || '')
-
-        socket = io();
-        socket.emit('init', name, room);
-        
-        socket.on('chat', function(msg){
-          document.body.innerHTML += '<hr>' + msg;
-        });
-
-        socket.on('list', function(names){
-          document.body.innerHTML += '<hr>Users online: ' + names.join(', ');
-        });
-
-        socket.on('rooms', function(rooms){
-          for(let i in rooms) {
-            let room = rooms[i][0], count = rooms[i][1];
-            let unit = (count == 1 ? 'person' : 'people');
-            rooms[i] = room + ' (' + count + ' ' + unit + ')'
-          }
-          document.body.innerHTML += '<hr>Rooms online:<br>' + rooms.join('<br>');
-        });
-
-        document.getElementById('textbox').addEventListener('keypress', function(e) {
-          if(e.key == 'Enter') submit();
-        });
-      }
-
-      function submit() {
-        msg = document.getElementById('textbox').value.trim();
-        document.getElementById('textbox').value = '';
-        if(msg == '') return;
-
-        console.log(socket)
-        switch(msg) {
-          case 'list':
-            socket.emit('list');
-            break
-          case 'rooms':
-            socket.emit('rooms');
-            break;
-          default:
-            socket.emit('chat', msg);
-        }
-        document.getElementById('textbox').focus();
-      }

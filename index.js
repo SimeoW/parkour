@@ -29,6 +29,7 @@ function getUserCount(room) {
 // Returns an array of usernames
 function getUserList(room) {
 	let list = [];
+	if(io.sockets.adapter.rooms[room] === undefined) return list;
 	let sockets = io.sockets.adapter.rooms[room].sockets;  
 	for(let socketId in sockets ) {
 		let socket = io.sockets.connected[socketId];
@@ -71,33 +72,42 @@ function loadJsonFile(path, callback) {
 }
 
 
-io.on('connection', (socket, name) => {
+io.on('connection', (socket) => {
 	socket.name = null;
 	socket.room = null;
+	socket.initialized = false;
 	let address = socket.handshake.address;
 
 	console.log(`${address} connected.`);
 
 	socket.on('disconnect', () => {
-		if(socket.name == null) return; // Haven't initialized yet
+		if(!socket.initialized) return; // Haven't initialized yet
 		console.log(`${address} disconnected.`);
-
-		let userCount = getUserCount(socket.room);
-		io.emit('chat', `${socket.name} just left the chat. Users in room ${socket.room} = ${userCount}`)
+		
+		socket.emit('remove_player', socket.name);
+		io.emit('chat', `${socket.name} left`)
 	});
 
 	socket.on('initialize', (name, room) => {
-		if(socket.name != null) return; // Already initialized
+		if(socket.initialized) return; // Already initialized
 		name = sanitizeHtml(name).trim();
 		if(name == '') name = 'Guest';
 		if(room == null) room = '';
-		name = sanitizeHtml(name).trim()
 		room = sanitizeHtml(room).trim().replace(/(\s)+/, ' ').replace(/[^A-Za-z0-9_ !@#$%^&*-+=/.]/, '');
+
+		users = getUserList(room) // Don't allow any duplicate names
+		let count = 1, _name = name;
+		while(users.includes(name)) {
+			count++;
+			name = _name + count.toString()
+			users = getUserList(room)
+		}
 
 		console.log(`${address} initialized to "${name}"`);
 		socket.name = name;
 		socket.room = room;
 		socket.join(room);
+		socket.initialized = true;
 
 		let map = loadJsonFile('maps/1.json', function(map) {
 			// Callback function for once the file is read
@@ -109,7 +119,7 @@ io.on('connection', (socket, name) => {
 					"objects": [
 						["ambientlight", "", "rgb(255,255,255)", 0.8],
 						["directionallight", "", [5000, 10000, 0], "rgb(255,0,0)", 1],
-						["skybox", "", "nebula", 10000],
+						["skybox", "", "nebula", "png", 10000],
 						["cube", "", [0, -50, 0], [100, 100, 100], [0, 0, 0], "rgb(55,158,57)", 0.9, 0.3, 0],
 						["cube", "", [75, -75, 0], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
 						["cube", "", [-75, -75, 0], [50, 50, 50], [0, 0, 0], "rgb(17, 117, 47)", 0.9, 0.3, 0],
@@ -118,11 +128,10 @@ io.on('connection', (socket, name) => {
 					]
 				}
 			}
-			socket.emit('map', map);
+			socket.emit('map', name, map);
 		});
 
-		let userCount = getUserCount(socket.room);
-		io.in(room).emit('chat', `${name} just entered the chat. Users in room ${socket.room} = ${userCount}`);
+		io.in(room).emit('chat', `${name} joined`);
 
 	});
 
@@ -134,11 +143,30 @@ io.on('connection', (socket, name) => {
 		socket.emit('rooms', getRoomList());
 	})
 
+	socket.on('update_player_state', (state) => {
+		if(!socket.initialized || state.length != 12) { // Misbehaving
+			console.log('Player misbehaving: ' + socket.name);
+			socket.disconnect();
+			return;
+		}
+		for(let item of state) { // If anything is not a number, return
+			if(typeof item != 'number') return;
+		}
+		state.unshift(socket.name);
+		// "to" doesn't send back to sender, but everyone else
+		io.in(socket.room).emit('update_player_state', state);
+	})
+
 	socket.on('chat', (msg) => {
-		if(socket.name == null) return; // Haven't initialized yet
+		if(!socket.initialized) { // Misbehaving
+			console.log('Player misbehaving: ' + socket.name);
+			socket.disconnect();
+			return;
+		}
 		msg = sanitizeHtml(msg).trim();
 		if(msg == '') return;
 		msg = `${socket.name} says ${msg}`
+		// "to" does send back to sender, everyone
 		io.in(socket.room).emit('chat', msg);
 	});
 
