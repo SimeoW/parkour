@@ -1,5 +1,39 @@
 const zeroVector = new THREE.Vector3(0, 0, 0);
 
+window.onkeypress = function(e) {
+	let id = document.activeElement.id;
+	let textbox = document.getElementById('chat');
+	if(id == 'chat') {
+		if(e.key == 'Enter') {
+			game.chat(textbox.value);
+			chat.value = '';
+			chat.style.width = 144;
+			chat.blur();
+		}
+		if(e.key == 'Escape') {
+			document.activeElement.blur();
+		}
+	} else {
+		if(e.key == 'Enter' || e.key == 't') {
+			textbox.focus();
+			textbox.select();
+			e.preventDefault();
+		}
+		if(e.key == '/' || e.key == '\\') {
+			textbox.focus();
+			textbox.select();
+		}
+	}
+}
+window.onkeyup = function(e) {
+	let id = document.activeElement.id;
+	console.log(id, e.key)
+	if(id == 'chat') {
+		if(e.key == 'Escape') {
+			document.activeElement.blur();
+		}
+	}
+}
 class Game {
 	constructor() {
 
@@ -48,17 +82,21 @@ class Game {
 		this.step();
 	}
 
+	chat(msg) {
+		this.socket.emit('chat', msg);
+	}
+
 	// Clear all objects from the world
 	clearMap() {
 		for (let i in this.scene._objects) {
-			this.scene.remove(this.scene._objects[i]);
+			this.remove(this.scene._objects[i]);
 		}
 		this.player = null;
 	}
 
 	initializePlayer() {
 		// Remove the old player if not done already
-		if(this.player != null) this.scene.remove(this.player);
+		if(this.player != null) this.remove(this.player);
 		if(this.spawn === undefined) this.spawn = zeroVector;
 		let l = 1, w = 1, h = 1;
 		let color = 0xFFFFFF;
@@ -87,7 +125,8 @@ class Game {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
 		}
-		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 33) {
+		if(this.player != null) this.controls.target = this.player.position;
+		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 20) {
 			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
 			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z]);
 			this.lastServerUpdateTime = (new Date()).getTime();
@@ -103,16 +142,18 @@ class Game {
 		let moveCamera = false;
 		let mouseDelta = this.input.mouseDelta;
 		let zoom = this.input.mouseWheel;
-		if(this.input.down('subtract') || this.input.down('page_down')) zoom += 10;
-		else if(this.input.down('add') || this.input.down('page_up')) zoom -= 10;
+		if(document.activeElement.id != 'chat') {
+			if(this.input.down('subtract') || this.input.down('page_down')) zoom += 10;
+			else if(this.input.down('add') || this.input.down('page_up')) zoom -= 10;
 
-		if(this.input.down('left_arrow') || this.input.down('a')) {
-			rotateCamera = true;
-			mouseDelta.x -= 5;
-		}
-		if(this.input.down('right_arrow') || this.input.down('d')) {
-			rotateCamera = true;
-			mouseDelta.x += 5;
+			if(this.input.down('left_arrow') || this.input.down('a')) {
+				rotateCamera = true;
+				mouseDelta.x -= 3;
+			}
+			if(this.input.down('right_arrow') || this.input.down('d')) {
+				rotateCamera = true;
+				mouseDelta.x += 3;
+			}
 		}
 
 		let controllerInput = {
@@ -136,11 +177,13 @@ class Game {
 			}
 			return;
 		}
-		this.controls.target = this.player.position;
-		if(!this.player.jumping) {
+		if(!this.player.jumping && document.activeElement.id != 'chat') {
+
+			// Sprinting
 			let sprinting_boost = 0;
 			if(this.input.down('shift')) sprinting_boost = this.player.speed;
 
+			// Moving forward
 			if(this.input.down('up_arrow') || this.input.down('w')) {
 				this.updatePlayerRotation();
 				let vx = game.player.position.x - game.camera.position.x;
@@ -159,6 +202,7 @@ class Game {
 					this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 				}
 			}
+			// Moving backward
 			if(this.input.down('down_arrow') || this.input.down('s')) {
 				this.updatePlayerRotation();
 				let vx = game.player.position.x - game.camera.position.x;
@@ -177,6 +221,7 @@ class Game {
 					this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 				}
 			}
+			// Jumping
 			if(this.input.down('space')) {
 				let v = this.player.getLinearVelocity();
 				if(v.y < 0) v.y = 0;
@@ -184,8 +229,9 @@ class Game {
 				this.player.jumping = true;
 			}
 		}
+		// Falling out of bounds
 		if(this.player.position.y < this.respawnHeight) {
-			this.scene.remove(this.player);
+			this.remove(this.player);
 			this.player = null;
 		}
 	}
@@ -269,18 +315,18 @@ class Game {
 			if(typeof name != 'string') return;
 			if(this.players[name] !== undefined) {
 				console.log(`Removing "${name}"`)
-				this.scene.remove(this.players[name]);
+				this.remove(this.players[name]);
 				delete this.players[name]
 			}
 		});
 
-		this.socket.on('chat', function(msg) {
-			console.log(msg)
-		});
+		this.socket.on('chat', function(name, msg) {
+			this.addChatMessage(name, msg);
+		}.bind(this));
 
 		this.socket.on('list', function(names) {
-			console.log('Users online: ' + names.join(', '));
-		});
+			this.addChatMessage('', 'Users online: ' + names.join(', '));
+		}.bind(this));
 
 		this.socket.on('rooms', function(rooms) {
 			for(let i in rooms) {
@@ -292,6 +338,18 @@ class Game {
 			console.log('Rooms online:\n' + rooms.join('\n'));
 		});
 		return true;
+	}
+
+	addChatMessage(name, msg) {
+		let html = '';
+		if(name == '') {
+			html = '<tr><td><span id="chatserver">' + msg + '</span></td></tr>';
+		} else {
+			html = '<tr><td><span id="chatname">' + name + '</span><span id="chatcontents">' + msg + '</span></td></tr>';
+		}
+		let chatfeed = document.getElementById('chatfeed');
+		chatfeed.innerHTML += html;
+		if(chatfeed.children.length > 30) chatfeed.children[0].remove();
 	}
 
 	// Load map from JSON object
@@ -321,7 +379,7 @@ class Game {
 			if(typeof name != 'string') continue;
 			if(name.trim() == "") name = type; // Set the default to the type
 
-			console.log(`Started  loading "${name}"`);
+			//console.log(`Started  loading "${name}"`);
 			switch(type) {
 				case 'cube':
 					if(object.length != 9) continue;
@@ -443,8 +501,7 @@ class Game {
 					console.log(`Unknown object "${name}"`);
 					continue;
 			}
-
-			console.log(`Finished loading "${name}"`);
+			//console.log(`Finished loading "${name}"`);
 		}
 		this.respawnHeight -= 30;
 		this.initializePlayer();
@@ -463,9 +520,18 @@ class Game {
 	}
 
 	add(object) {
+		if(object == null || object === undefined) return;
 		this.scene.add(object);
 		//object.__dirtyPosition = true;
 		//object.__dirtyRotation = true;
+	}
+
+	remove(object) {
+		if(object == null || object === undefined) return;
+		if(object.label !== null || object.label !== undefined) {
+			this.scene.remove(object.label)
+		}
+		this.scene.remove(object);
 	}
 
 	addCube(name, position, scale, rotation, color, friction, restitution, mass) {

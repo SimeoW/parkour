@@ -3,6 +3,8 @@
   <head>
     <meta charset='utf-8'/>
     <meta name='viewport' content='user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width'>
+    <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
+    <title>VWORLD</title>
     <style>
       html {
         height: 100%;
@@ -14,14 +16,55 @@
         background-color: #101010
       }
       canvas {
-        height: 100%;
-        left: 0;
-        position: fixed;
-        top: 0;
         width: 100%;
-      }
-      #viewport {
+        height: 100%;
+        position: fixed;
+        left: 0;
+        top: 0;
         z-index: -1;
+      }
+      #chatbar {
+        position: fixed;
+        left: 10px;
+        bottom: 10px;
+      }
+      #chat {
+        font-family: monospace;
+        width: 144px;
+        border: none;
+        outline: none;
+        border-radius: 100px;
+        padding: 10px 10px 10px 20px;
+        color: #FFF;
+        background-color: rgba(30, 30, 30, 0.7);
+      }
+      #chat::placeholder {
+        color: #FFF;
+        opacity: 0.7;
+      }
+      #chatfeed {
+        font-family: monospace;
+        padding-left: 0px;
+        width: 100%;
+        color: #FFF;
+      }
+      #chatfeed tr {
+      }
+      #chatname, #chatserver {
+        padding: 1px 10px;
+        border-radius: 100px;
+        margin-right: 10px;
+      }
+      #chatname {
+        color: #FFF;
+        background-color: rgba(34, 103, 168, 0.6);
+      }
+      #chatcontents {
+        text-shadow: 0px 0px 8px #000;
+      }
+      #chatserver {
+        color: #FFF;
+        background-color: rgba(30, 30, 30, 0.6);
       }
     </style>
     <script type='text/javascript' src='lib/three.js'></script>
@@ -33,6 +76,10 @@
     <script type='text/javascript' src='socket.io/socket.io.js'></script>
   </head>
   <body>
+    <div id='chatbar'>
+      <table id='chatfeed'></table>
+      <input id='chat' type='text' placeholder='Send a message' onkeypress='this.style.width=Math.max(144, (this.value.length+5)*8)+"px";'/>
+    </div>
     <div id='viewport'></div>
   </body>
   <script type='text/javascript' src='game.js'></script>

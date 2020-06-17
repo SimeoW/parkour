@@ -85,12 +85,12 @@ io.on('connection', (socket) => {
 		console.log(`${address} disconnected.`);
 		
 		socket.emit('remove_player', socket.name);
-		io.emit('chat', `${socket.name} left`)
+		io.emit('chat', '', `${socket.name} left`)
 	});
 
 	socket.on('initialize', (name, room) => {
 		if(socket.initialized) return; // Already initialized
-		name = sanitizeHtml(name).trim();
+		name = sanitizeHtml(name).trim().replace(/[^A-Za-z0-9_]/g, '');
 		if(name == '') name = 'Guest';
 		if(room == null) room = '';
 		room = sanitizeHtml(room).trim().replace(/(\s)+/, ' ').replace(/[^A-Za-z0-9_ !@#$%^&*-+=/.]/, '');
@@ -131,7 +131,7 @@ io.on('connection', (socket) => {
 			socket.emit('map', name, map);
 		});
 
-		io.in(room).emit('chat', `${name} joined`);
+		io.in(room).emit('chat', '', `${name} joined`);
 
 	});
 
@@ -165,9 +165,9 @@ io.on('connection', (socket) => {
 		}
 		msg = sanitizeHtml(msg).trim();
 		if(msg == '') return;
-		msg = `${socket.name} says ${msg}`
+		//msg = `<span>${socket.name}:</span> ${msg}`
 		// "to" does send back to sender, everyone
-		io.in(socket.room).emit('chat', msg);
+		io.in(socket.room).emit('chat', socket.name, msg);
 	});
 
 });
