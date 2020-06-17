@@ -72,7 +72,7 @@ class Game {
 
 		// Used to orbit the camera around the player
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
-		this.controls.smoothing = 10;
+		this.controls.smoothing = 1;
 
 		this.paused = false;
 
@@ -234,10 +234,10 @@ class Game {
 		this.player.velocity = 1;
 		this.player.maxVelocity = 70;
 		this.player.jumping = false;
-		this.player.jumpVelocity = 150;
-		this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
-			game.player.jumping = false;
-		});
+		this.player.jumpVelocity = 100;
+		//this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
+		//	game.player.jumping = false;
+		//});
 		this.controls.position = new THREE.Vector3(0, 50, -80);
 		this.playerRespawnTimeout = null;
 	}
@@ -317,6 +317,8 @@ class Game {
 			return;
 		}
 		if(document.activeElement.id != 'chat') {
+			if(this.player != null && this.player._physijs.touches.length > 0) this.player.jumping = false;
+
 			if(!this.player.jumping) {
 
 				// Sprinting
@@ -378,7 +380,8 @@ class Game {
 				if(this.input.down('space')) {
 					let v = this.player.getLinearVelocity();
 					if(v.y < 0) v.y = 0;
-					this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
+					//this.player.applyCentralImpulse(new THREE.Vector3(0, this.player.jumpVelocity, 0))
+					this.player.setLinearVelocity(new THREE.Vector3(v.x, this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
 					this.player.jumping = true;
 				}
 			} else { // While the player is in the air, grand a small amount of influence
@@ -449,6 +452,39 @@ class Game {
 		}
 	}
 
+	// Update a player's position, rotation, scale, and velocities
+	updatePlayerState(state) {
+		let name = state.shift();
+		if(typeof name != 'string' || state.length != 15) return;
+		if(this.player != null && name == this.player_name) return; // Ignore self
+		
+		for(let item of state) { // If anything is not a number, ignore the message
+			if(typeof item != 'number') return;
+		}
+		
+		let p = this.players[name];
+		let l = state[12], w = state[13], h = state[14];
+		let color = 0xFFFFFF;
+		if(p === undefined) { // Create online player object
+			p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {l: l, w: w, h: h}, new THREE.Vector3(state[3], state[4], state[5]), color);
+			p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
+			p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
+			this.players[name] = p;
+		} else { // Update player position
+			if(p.length != l || p.width != w || p.height != h) {
+				// One of the scales changed, we need to reset the player
+				p = this.players[name] = p.setScale(l, w, h);
+			}
+
+			p.__dirtyPosition = true;
+			p.position.set(state[0], state[1], state[2]);
+			p.__dirtyRotation = true;
+			p.rotation.set(state[3], state[4], state[5]);
+			p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
+			p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
+		}
+	}
+
 	// Set the player's rotation to the camera direction
 	updatePlayerRotation() {
 		let vx = game.player.position.x - game.camera.position.x;
@@ -496,41 +532,16 @@ class Game {
 		this.addChatMessage('', 'Type "\\help" for help')
 		//this.chat('\\help');
 
-		this.socket.on('map', function(name, map) {
+		this.socket.on('map', function(name, players, map) {
 			this.player_name = name;
 			this.loadMap(map);
+			for(let playerState of players) {
+				this.updatePlayerState(playerState);
+			}
 		}.bind(this)); // Make that this, this this
 
 		this.socket.on('update_player_state', function(state) {
-			let name = state.shift();
-			if(typeof name != 'string' || state.length != 15) return;
-			if(this.player != null && name == this.player_name) return; // Ignore self
-			
-			for(let item of state) { // If anything is not a number, ignore the message
-				if(typeof item != 'number') return;
-			}
-			
-			let p = this.players[name];
-			let l = state[12], w = state[13], h = state[14];
-			let color = 0xFFFFFF;
-			if(p === undefined) { // Create online player object
-				p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {l: l, w: w, h: h}, new THREE.Vector3(state[3], state[4], state[5]), color);
-				p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
-				p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
-				this.players[name] = p;
-			} else { // Update player position
-				if(p.length != l || p.width != w || p.height != h) {
-					// One of the scales changed, we need to reset the player
-					p = this.players[name] = p.setScale(l, w, h);
-				}
-
-				p.__dirtyPosition = true;
-				p.position.set(state[0], state[1], state[2]);
-				p.__dirtyRotation = true;
-				p.rotation.set(state[3], state[4], state[5]);
-				p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
-				p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
-			}
+			this.updatePlayerState(state);
 		}.bind(this));
 
 		this.socket.on('remove_player', function(name) {

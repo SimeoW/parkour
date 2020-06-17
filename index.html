@@ -61,9 +61,11 @@
       }
       #chatname {
         color: #FFF;
+        word-break: break-all;
       }
       #chatcontents {
         text-shadow: 0px 0px 8px #000;
+        word-break: break-all;
       }
       #chatserver {
         color: #FFF;
@@ -81,7 +83,7 @@
   <body>
     <div id='chatbar'>
       <table id='chatfeed'></table>
-      <input id='chat' type='text' placeholder='Send a message'/>
+      <input id='chat' type='text' placeholder='Send a message' maxlength="256" />
     </div>
     <div id='viewport'></div>
   </body>
@@ -94,7 +96,7 @@
 
     let player_name = 'Guest', server_name = '';
     if(localStorage.getItem('playerName') == null) {
-      player_name = prompt('Welcome to VWORLD! What is your name?', player_name) || player_name;
+      player_name = prompt('Welcome to VWORLD! What is your name? (character limit: 20)', player_name).substring(0, 20) || player_name;
       localStorage.setItem('playerName', player_name);
     } else {
       player_name = localStorage.getItem('playerName');

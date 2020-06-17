@@ -38,6 +38,19 @@ function getUserList(room) {
 	return list;
 }
 
+// Returns an array of usernames
+function getPlayerStates(room) {
+	let list = [];
+	if(io.sockets.adapter.rooms[room] === undefined) return list;
+	let sockets = io.sockets.adapter.rooms[room].sockets;  
+	for(let socketId in sockets ) {
+		let socket = io.sockets.connected[socketId];
+		let player_state = socket.last_player_state;
+		if(player_state != null && player_state != undefined) list.push(player_state);
+	}
+	return list;
+}
+
 // Returns a list of room names with the number of players in each room
 function getRoomList() {
 	let list = [];
@@ -75,6 +88,7 @@ function loadJsonFile(path, callback) {
 io.on('connection', (socket) => {
 	socket.name = null;
 	socket.room = null;
+	socket.last_player_state
 	socket.initialized = false;
 	let address = socket.handshake.address;
 
@@ -90,7 +104,7 @@ io.on('connection', (socket) => {
 
 	socket.on('initialize', (name, room) => {
 		if(socket.initialized) return; // Already initialized
-		name = sanitizeHtml(name).trim().replace(/[^A-Za-z0-9_]/g, '');
+		name = sanitizeHtml(name).trim().replace(/[^A-Za-z0-9_]/g, '').substring(0, 20);
 		if(name == '') name = 'Guest';
 		if(room == null) room = '';
 		room = sanitizeHtml(room).trim().replace(/(\s)+/, ' ').replace(/[^A-Za-z0-9_ !@#$%^&*-+=/.]/, '');
@@ -109,6 +123,7 @@ io.on('connection', (socket) => {
 		socket.join(room);
 		socket.initialized = true;
 
+		let players = getPlayerStates(room);
 		let map = loadJsonFile('maps/1.json', function(map) {
 			// Callback function for once the file is read
 			if(map == null) {
@@ -128,7 +143,7 @@ io.on('connection', (socket) => {
 					]
 				}
 			}
-			socket.emit('map', name, map);
+			socket.emit('map', name, players, map);
 		});
 
 		io.in(room).emit('chat', '', `${name} joined the server`);
@@ -153,6 +168,7 @@ io.on('connection', (socket) => {
 			if(typeof item != 'number') return;
 		}
 		state.unshift(socket.name);
+		socket.last_player_state = state;
 		// "to" doesn't send back to sender, but everyone else
 		io.in(socket.room).emit('update_player_state', state);
 	})
