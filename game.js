@@ -206,7 +206,7 @@ class Game {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
 		}
-		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 33.33) {
+		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 50) {
 			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
 			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
 			this.lastServerUpdateTime = (new Date()).getTime();
