@@ -27,7 +27,6 @@ window.onkeypress = function(e) {
 }
 window.onkeyup = function(e) {
 	let id = document.activeElement.id;
-	console.log(id, e.key)
 	if(id == 'chat') {
 		if(e.key == 'Escape') {
 			document.activeElement.blur();
@@ -37,9 +36,11 @@ window.onkeyup = function(e) {
 class Game {
 	constructor() {
 
+		this.fixedTimeStep = 1 / 60;
+
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
 
-		this.scene = new Physijs.Scene({ fixedTimeStep: 1 / 30 });
+		this.scene = new Physijs.Scene({ fixedTimeStep: this.fixedTimeStep });
 
 		this.server_name = null;
 		this.player_name = null;
@@ -54,8 +55,8 @@ class Game {
 		this.renderer.setClearColor(new THREE.Color(0x101010), 1);
 		this.renderer.domElement.id = 'draw';
 
-		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = THREE.BasicShadowMap;
+		this.renderer.shadowMap.enabled = false;
+		//this.renderer.shadowMap.type = THREE.BasicShadowMap;
 		//this.renderer.shadowMapEnabled = true;
 		//this.renderer.shadowMapSoft = true;
 		document.getElementById('viewport').appendChild(this.renderer.domElement);
@@ -74,16 +75,69 @@ class Game {
 
 		// Used to orbit the camera around the player
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
+		this.controls.smoothing = 10;
 
 		this.paused = false;
 
 		this.prevFrameTime = (new Date()).getTime();
 		this.lastServerUpdateTime = this.prevFrameTime;
+		this.lastPositionCheckTime = this.prevFrameTime;
 		this.step();
 	}
 
 	chat(msg) {
-		this.socket.emit('chat', msg);
+		if(msg.startsWith('/') || msg.startsWith('\\')) {
+			let cmd = msg.substring(1).toLowerCase();
+			let words = cmd.split(' ');
+			switch(words[0]) {
+				case 'help':
+					let html = '<br><h3>Welcome to VWORLD</h3>';
+					html += '<hr>The controls are as follows:';
+					html += '<br>• SPACE <span style="color: #FFF76B">: Jump</span>';
+					html += '<br>• W, UP <span style="color: #FFF76B">: Move forward</span>';
+					html += '<br>• A, LEFT <span style="color: #FFF76B">: Rotate camera left</span>';
+					html += '<br>• S, DOWN <span style="color: #FFF76B">: Move backward</span>';
+					html += '<br>• D, RIGHT <span style="color: #FFF76B">: Rotate camera right</span>';
+					html += '<br>• SHIFT <span style="color: #FFF76B">: Sprint</span>';
+					html += '<br>• T, ENTER <span style="color: #FFF76B">: Chat</span>';
+
+					html += '<hr>The chat commands are as follows:';
+					html += '<br>• \\help <span style="color: #FFF76B">: List the available commands</span>';
+					html += '<br>• \\list <span style="color: #FFF76B">: List the players currently on the server</span>';
+					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
+					html += '<br>• \\pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
+					html += '<br>• \\rename<span style="color: #FFF76B">: Rename your character</span>';
+					html += '<br>';
+					html += '<br>';
+					this.addChatMessage('', html, '#FFFFFF');
+					break;
+				case 'list':
+					this.socket.emit('list');
+					break;
+				case 'reset':
+					this.remove(this.player);
+					this.player = null;
+					break;
+				case 'pause':
+					if(this.paused) {
+						this.paused = false;
+						this.addChatMessage('', 'The game has been resumed', '#FFFFFF');
+					} else {
+						this.paused = true;
+						this.addChatMessage('', 'The game has been paused', '#FFFFFF');
+					}
+					break;
+				case 'rename':
+					localStorage.removeItem('playerName');
+					location.reload();
+					break;
+				default:
+					this.addChatMessage('', 'Command not found, type \\help for more information', '#FF4949');
+			}
+		} else {
+			msg = msg.substring(0, 256);
+			this.socket.emit('chat', msg);
+		}
 	}
 
 	// Clear all objects from the world
@@ -97,18 +151,20 @@ class Game {
 	initializePlayer() {
 		// Remove the old player if not done already
 		if(this.player != null) this.remove(this.player);
+		// Ensure that there is a spawn
 		if(this.spawn === undefined) this.spawn = zeroVector;
 		let l = 1, w = 1, h = 1;
 		let color = 0xFFFFFF;
 		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x + Math.random() * 10 - 5, this.spawn.y, this.spawn.z + Math.random() * 10 - 5), {l: l, w: w, h: h}, zeroVector, color, 0.8, 0.1, 30);
-		this.player.speedSmoothing = 2;
-		this.player.speed = 30;
+		this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
+		this.player.velocity = 10;
+		this.player.maxVelocity = 70;
 		this.player.jumping = false;
 		this.player.jumpVelocity = 150;
 		this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 			game.player.jumping = false;
 		});
-		this.controls.position = new THREE.Vector3(0, 80, -50);
+		this.controls.position = new THREE.Vector3(0, 50, -80);
 		this.playerRespawnTimeout = null;
 	}
 
@@ -116,6 +172,8 @@ class Game {
 	step() {
 		this.currentFrameTime = (new Date()).getTime();
 		this.deltaTime = (this.currentFrameTime - this.prevFrameTime) / 1000;
+
+		this.updateCamera();
 
 		if(!this.paused) {
 			this.updateControls();
@@ -125,15 +183,33 @@ class Game {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
 		}
-		if(this.player != null) this.controls.target = this.player.position;
-		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 20) {
+		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 33.33) {
 			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
 			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z]);
 			this.lastServerUpdateTime = (new Date()).getTime();
 		}
+		// Every second, check if the player has not moved, if no, then grant access to a free jump
+		if(this.player != null && this.currentFrameTime - this.lastPositionCheckTime >= 1000) {
+			// If the player has not moved
+			if(this.player.position.x == this.player.previousPosition.x && this.player.position.y == this.player.previousPosition.y && this.player.position.z == this.player.previousPosition.z) {
+				this.player.jumping = false;
+			}
+			this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
+			this.lastPositionCheckTime = (new Date()).getTime();
+		}
 		this.input.endFrame();
 		this.prevFrameTime = this.currentFrameTime;
+
 		requestAnimationFrame(this.step.bind(this));
+	}
+
+	// Update the camera by applying a smooth transition to the next player's position
+	updateCamera() {
+		if(this.player == null) return;
+		let x = (this.controls.target.x * this.controls.smoothing + this.player.position.x) / (this.controls.smoothing + 1);
+		let y = (this.controls.target.y * this.controls.smoothing + this.player.position.y) / (this.controls.smoothing + 1);
+		let z = (this.controls.target.z * this.controls.smoothing + this.player.position.z) / (this.controls.smoothing + 1);
+		this.controls.target = new THREE.Vector3(x, y, z);
 	}
 
 	// Handle the camera orbit
@@ -142,6 +218,8 @@ class Game {
 		let moveCamera = false;
 		let mouseDelta = this.input.mouseDelta;
 		let zoom = this.input.mouseWheel;
+		mouseDelta.x /= 3;
+		mouseDelta.y /= 3;
 		if(document.activeElement.id != 'chat') {
 			if(this.input.down('subtract') || this.input.down('page_down')) zoom += 10;
 			else if(this.input.down('add') || this.input.down('page_up')) zoom -= 10;
@@ -160,8 +238,8 @@ class Game {
 			deltaTime: this.deltaTime,                                      // time passed, in seconds, since last update call
 			rotateHorizontally: rotateCamera ? -mouseDelta.x : 0,                    // rotation around y axis
 			rotateVertically: rotateCamera ? -mouseDelta.y : 0,                        // rotate vertically around x / z axis
-			moveOffsetVertically: (moveCamera ? -mouseDelta.y : 0) * 10,                               // move the target offset (affect lookat AND camera position), along camera's Y axis. 
-			moveOffsetHorizontally: (moveCamera ? mouseDelta.x : 0) * 10,                            // move the target offset left / right, relative to camera's world direction.
+			moveOffsetVertically: 0, // (moveCamera ? -mouseDelta.y : 0) * 10,                               // move the target offset (affect lookat AND camera position), along camera's Y axis. 
+			moveOffsetHorizontally: 0, // (moveCamera ? mouseDelta.x : 0) * 10,                            // move the target offset left / right, relative to camera's world direction.
 			zoom: zoom * 10,                                                // zoom in / out
 		}
 		this.controls.update(controllerInput);
@@ -177,58 +255,110 @@ class Game {
 			}
 			return;
 		}
-		if(!this.player.jumping && document.activeElement.id != 'chat') {
+		if(document.activeElement.id != 'chat') {
+			if(!this.player.jumping) {
 
-			// Sprinting
-			let sprinting_boost = 0;
-			if(this.input.down('shift')) sprinting_boost = this.player.speed;
+				// Sprinting
+				let maxVelocity = this.player.maxVelocity;
+				if(this.input.down('shift')) maxVelocity *= 1.25;
+				// Moving forward
+				if(this.input.down('up_arrow') || this.input.down('w')) {
+					this.updatePlayerRotation();
+					
+					// 2D angle
+					let vx2 = game.player.position.x - game.camera.position.x;
+					let vz2 = game.player.position.z - game.camera.position.z;
+					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 
-			// Moving forward
-			if(this.input.down('up_arrow') || this.input.down('w')) {
-				this.updatePlayerRotation();
-				let vx = game.player.position.x - game.camera.position.x;
-				let vz = game.player.position.z - game.camera.position.z;
-				let dt = Math.sqrt(vx * vx + vz * vz);
-				if(dt != 0) {
-					//let p = this.player.position;
-					//let px = p.x + this.player.speed * vx / dt; 
-					//let pz = p.z + this.player.speed * vz / dt; 
-					//this.player.__dirtyPosition = true;
-					//this.player.position.set(px, p.y, pz);
-					
-					let v = this.player.getLinearVelocity();
-					vx = (v.x * this.player.speedSmoothing + ((this.player.speed + sprinting_boost) * vx / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
-					vz = (v.z * this.player.speedSmoothing + ((this.player.speed + sprinting_boost) * vz / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
-					this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+					if(dt != 0) {
+						let v = this.player.getLinearVelocity();
+						//console.log(v.z)
+						let vx = v.x + this.player.velocity * vx2 / dt * this.deltaTime * 100;
+						let vz = v.z + this.player.velocity * vz2 / dt * this.deltaTime * 100;
+
+						if(dt > maxVelocity) { // Limit velocity
+							vx = vx2 / dt * maxVelocity
+							vz = vz2 / dt * maxVelocity
+						}
+						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+						this.player.setAngularVelocity(zeroVector);
+					} else {
+						console.log('Error: distance is 0')
+					}
 				}
-			}
-			// Moving backward
-			if(this.input.down('down_arrow') || this.input.down('s')) {
-				this.updatePlayerRotation();
-				let vx = game.player.position.x - game.camera.position.x;
-				let vz = game.player.position.z - game.camera.position.z;
-				let dt = Math.sqrt(vx * vx + vz * vz);
-				if(dt != 0) {
-					//let p = this.player.position;
-					//let px = p.x + this.player.speed * vx / dt; 
-					//let pz = p.z + this.player.speed * vz / dt; 
-					//this.player.__dirtyPosition = true;
-					//this.player.position.set(px, p.y, pz);
-					
-					let v = this.player.getLinearVelocity();
-					vx = (v.x * this.player.speedSmoothing + (-this.player.speed * vx / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
-					vz = (v.z * this.player.speedSmoothing + (-this.player.speed * vz / dt * this.deltaTime * 100)) / (this.player.speedSmoothing + 1);
-					this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+				// Moving backward
+				if(this.input.down('down_arrow') || this.input.down('s')) {
+					this.updatePlayerRotation();
+
+					// 2D angle
+					let vx2 = game.player.position.x - game.camera.position.x;
+					let vz2 = game.player.position.z - game.camera.position.z;
+					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+
+					if(dt != 0) {
+						let v = this.player.getLinearVelocity();
+						//console.log(v.z)
+						let vx = v.x - this.player.velocity * vx2 / dt * this.deltaTime * 100;
+						let vz = v.z - this.player.velocity * vz2 / dt * this.deltaTime * 100;
+
+						if(dt > maxVelocity) { // Limit velocity
+							vx = vx2 / dt * maxVelocity
+							vz = vz2 / dt * maxVelocity
+						}
+						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+						this.player.setAngularVelocity(zeroVector);
+					} else {
+						console.log('Error: distance is 0')
+					}
 				}
-			}
-			// Jumping
-			if(this.input.down('space')) {
-				let v = this.player.getLinearVelocity();
-				if(v.y < 0) v.y = 0;
-				this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
-				this.player.jumping = true;
+				// Jumping
+				if(this.input.down('space')) {
+					let v = this.player.getLinearVelocity();
+					if(v.y < 0) v.y = 0;
+					this.player.setLinearVelocity(new THREE.Vector3(v.x, v.y + this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
+					this.player.jumping = true;
+				}
+			} else { // While the player is in the air, grand a small amount of influence
+				let influenceVelocity = 0//.0000001;
+				// Moving forward
+				if(this.input.down('up_arrow') || this.input.down('w')) {
+					let vx2 = game.player.position.x - game.camera.position.x;
+					let vz2 = game.player.position.z - game.camera.position.z;
+					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					if(dt != 0) {
+						let v = this.player.getLinearVelocity();
+						let vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
+						let vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						if(dt > this.player.maxVelocity) { // Limit velocity
+							vx = vx2 / dt * this.player.maxVelocity
+							vz = vz2 / dt * this.player.maxVelocity
+						}
+						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+					} else {
+						console.log('Error: distance is 0')
+					}
+				}
+				// Moving backward
+				if(this.input.down('down_arrow') || this.input.down('s')) {
+					let vx2 = game.player.position.x - game.camera.position.x;
+					let vz2 = game.player.position.z - game.camera.position.z;
+					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					if(dt != 0) {
+						let v = this.player.getLinearVelocity();
+						let vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
+						let vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						if(dt > this.player.maxVelocity) { // Limit velocity
+							vx = vx2 / dt * this.player.maxVelocity
+							vz = vz2 / dt * this.player.maxVelocity
+						}
+						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+					} else {
+						console.log('Error: distance is 0')
+					}
+				}
 			}
 		}
+
 		// Falling out of bounds
 		if(this.player.position.y < this.respawnHeight) {
 			this.remove(this.player);
@@ -238,8 +368,6 @@ class Game {
 
 	// Set the player's rotation to the camera direction
 	updatePlayerRotation() {
-		//let vector = game.camera.getWorldDirection(zeroVector.clone());
-		//let vector = game.camera.rotation;
 		let vx = game.player.position.x - game.camera.position.x;
 		let vz = game.player.position.z - game.camera.position.z;
 		let dt = Math.sqrt(vx * vx + vz * vz);
@@ -282,6 +410,7 @@ class Game {
 
 		this.socket = io();
 		this.socket.emit('initialize', player_name, server_name);
+		this.chat('\\help')
 
 		this.socket.on('map', function(name, map) {
 			this.player_name = name;
@@ -293,16 +422,16 @@ class Game {
 			if(typeof name != 'string' || state.length != 12) return;
 			if(this.player != null && name == this.player_name) return; // Ignore self
 			
-			for(let item of state) { // If anything is not a number, return
+			for(let item of state) { // If anything is not a number, ignore the message
 				if(typeof item != 'number') return;
 			}
-
-			if(this.players[name] === undefined) {
+			
+			if(this.players[name] === undefined) { // Create online player object
 				let l = 1, w = 1, h = 1;
 				let color = 0xFFFFFF;
 				let p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {l: l, w: w, h: h}, new THREE.Vector3(state[3], state[4], state[5]), color, 0.8, 0.1, Infinity);
 				this.players[name] = p;
-			} else {
+			} else { // Update player position
 				let p = this.players[name];
 				p.__dirtyPosition = true;
 				p.position.set(state[0], state[1], state[2]);
@@ -321,11 +450,19 @@ class Game {
 		});
 
 		this.socket.on('chat', function(name, msg) {
-			this.addChatMessage(name, msg);
+			let color = '#FFFFFF';
+			if(name != '') color = this.strColor(name);
+			this.addChatMessage(name, msg, color);
 		}.bind(this));
 
 		this.socket.on('list', function(names) {
-			this.addChatMessage('', 'Users online: ' + names.join(', '));
+			names.sort();
+			let html = 'Users online:';
+			for(name of names) {
+				let color = this.strColor(name);
+				html += '<br><span style="color: ' + color + '">' + '•</span> <span style="color: #FFF76B">' + name + '</span>';
+			}
+			this.addChatMessage('', html, '#FFFFFF');
 		}.bind(this));
 
 		this.socket.on('rooms', function(rooms) {
@@ -340,12 +477,37 @@ class Game {
 		return true;
 	}
 
-	addChatMessage(name, msg) {
+	// Given a string, compute a corresponding color
+	strColor(str) {
+		str = str.trim() + ' ';
+		let hash = 0;
+		for (let i = 0; i < str.length; i++) {
+			hash = str.charCodeAt(i) + ((hash << 5) - hash);
+		}
+		let c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+		return '#' + ('00000'.substring(0, 6 - c.length) + c);
+	}
+
+	// Given a color, returns a black or white color for the background/foreground
+	strBWColor(hex) {
+		if (hex.indexOf('#') === 0) hex = hex.slice(1);
+		if (hex.length === 3) {
+			hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+		}
+		if (hex.length !== 6) {
+			throw new Error('Invalid HEX color.');
+		}
+		let r = parseInt(hex.slice(0, 2), 16), g = parseInt(hex.slice(2, 4), 16), b = parseInt(hex.slice(4, 6), 16);
+		return (r * 0.299 + g * 0.587 + b * 0.114) > 186 ? '#000000' : '#FFFFFF';
+	}
+
+	addChatMessage(name, msg, color) {
 		let html = '';
 		if(name == '') {
-			html = '<tr><td><span id="chatserver">' + msg + '</span></td></tr>';
+			html = '<tr><td id="chatserver" style="color: ' + color + '">' + msg + '</td></tr>';
 		} else {
-			html = '<tr><td><span id="chatname">' + name + '</span><span id="chatcontents">' + msg + '</span></td></tr>';
+			let bw = this.strBWColor(color);
+			html = '<tr><td><span id="chatname" style="color: ' + bw + '; background-color: ' + color + '">' + name + '</span><span id="chatcontents">' + msg + '</span></td></tr>';
 		}
 		let chatfeed = document.getElementById('chatfeed');
 		chatfeed.innerHTML += html;
@@ -547,8 +709,8 @@ class Game {
 		cube.meshType = 'cube';
 		cube.position.set(position.x, position.y, position.z);
 		cube.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
-		cube.receiveShadow = true;
-		cube.castShadow = true;
+		//cube.receiveShadow = true;
+		//cube.castShadow = true;
 		this.objects.push(cube);
 		this.add(cube);
 		return cube;
@@ -567,8 +729,8 @@ class Game {
 		sphere.meshName = name;
 		sphere.meshType = 'sphere';
 		sphere.position.set(position.x, position.y, position.z);
-		sphere.receiveShadow = true;
-		sphere.castShadow = true;
+		//sphere.receiveShadow = true;
+		//sphere.castShadow = true;
 		this.objects.push(sphere);
 		this.add(sphere);
 		return sphere;
@@ -603,13 +765,14 @@ class Game {
 		player.meshName = name;
 		player.meshType = 'player';
 		player.position.set(position.x, position.y, position.z);
-		player.castShadow = true;
+		//player.castShadow = true;
 
+		let _color = this.strColor(name);
 		player.label = new THREE.TextSprite({
 			text: name,
 			fontFamily: 'Helvetica, Arial, sans-serif',
 			fontSize: 1.8,
-			fillColor: color,
+			fillColor: 0xFFFFFF,
 		});
 		player.label.position.set(0, 7, 0);
 		player.label.material.depthTest = false;
@@ -691,11 +854,17 @@ class Game {
 	}
 
 	addDirectionalLight(name, position, color, intensity) {
-		let light = new THREE.DirectionalLight(0xffffff, intensity);
+		let light = new THREE.DirectionalLight(0xFFFFFF, intensity);
 		light.meshName = name;
 		light.meshType = 'directionallight';
+		//light.castShadow = true;
+		//light.shadow.mapSize.width = 512;  
+		//light.shadow.mapSize.height = 512; 
+		//light.shadow.camera.near = 0.5;
+		//light.shadow.camera.far = 500  
 		light.position.set(position.x, position.y, position.z);
 		this.objects.push(light);
+		//this.add(new THREE.CameraHelper(light.shadow.camera));
 		this.add(light);
 		return light;
 	}

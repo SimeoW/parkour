@@ -2,7 +2,8 @@
 <html>
   <head>
     <meta charset='utf-8'/>
-    <meta name='viewport' content='user-scalable=no, initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width'>
+    <meta name='viewport' content='initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, user-scalable=no'>
+
     <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
     <title>VWORLD</title>
     <style>
@@ -27,14 +28,18 @@
         position: fixed;
         left: 10px;
         bottom: 10px;
+        user-select: none;
       }
       #chat {
         font-family: monospace;
+        min-width: 100%;
         width: 144px;
         border: none;
         outline: none;
         border-radius: 100px;
-        padding: 10px 10px 10px 20px;
+        padding: 5px;
+        margin-top: 9px;
+        text-align: center;
         color: #FFF;
         background-color: rgba(30, 30, 30, 0.7);
       }
@@ -48,16 +53,13 @@
         width: 100%;
         color: #FFF;
       }
-      #chatfeed tr {
-      }
       #chatname, #chatserver {
         padding: 1px 10px;
-        border-radius: 100px;
+        border-radius: 8px;
         margin-right: 10px;
       }
       #chatname {
         color: #FFF;
-        background-color: rgba(34, 103, 168, 0.6);
       }
       #chatcontents {
         text-shadow: 0px 0px 8px #000;
@@ -78,7 +80,7 @@
   <body>
     <div id='chatbar'>
       <table id='chatfeed'></table>
-      <input id='chat' type='text' placeholder='Send a message' onkeypress='this.style.width=Math.max(144, (this.value.length+5)*8)+"px";'/>
+      <input id='chat' type='text' placeholder='Send a message' onkeypress='this.style.width=(this.value.length+5)*8+"px";'/>
     </div>
     <div id='viewport'></div>
   </body>
@@ -89,16 +91,15 @@
     Physijs.scripts.ammo='ammo.js';
     
 
-    let player_name = 'Guest';
+    let player_name = 'Guest', server_name = '';
     if(localStorage.getItem('playerName') == null) {
-      player_name = prompt('Welcome! What is your name?', player_name) || player_name;
+      player_name = prompt('Welcome to VWORLD! What is your name?', player_name) || player_name;
       localStorage.setItem('playerName', player_name);
     } else {
-      player_name = prompt('Welcome! What is your name?', localStorage.getItem('playerName')) || player_name;
-      localStorage.setItem('playerName', player_name);
+      player_name = localStorage.getItem('playerName');
     }
-    const server_name = '';
 
+    // Create a new instance of the game
     const game = new Game();
     game.connect(player_name, server_name);
     

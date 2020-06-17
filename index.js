@@ -85,7 +85,7 @@ io.on('connection', (socket) => {
 		console.log(`${address} disconnected.`);
 		
 		socket.emit('remove_player', socket.name);
-		io.emit('chat', '', `${socket.name} left`)
+		io.emit('chat', '', `${socket.name} left the server`)
 	});
 
 	socket.on('initialize', (name, room) => {
@@ -131,7 +131,7 @@ io.on('connection', (socket) => {
 			socket.emit('map', name, map);
 		});
 
-		io.in(room).emit('chat', '', `${name} joined`);
+		io.in(room).emit('chat', '', `${name} joined the server`);
 
 	});
 
@@ -163,7 +163,7 @@ io.on('connection', (socket) => {
 			socket.disconnect();
 			return;
 		}
-		msg = sanitizeHtml(msg).trim();
+		msg = sanitizeHtml(msg).trim().substring(0, 256);
 		if(msg == '') return;
 		//msg = `<span>${socket.name}:</span> ${msg}`
 		// "to" does send back to sender, everyone
