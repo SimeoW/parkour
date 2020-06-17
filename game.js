@@ -69,6 +69,7 @@ class Game {
 		this.spawn = null;
 		this.players = [];
 		this.player = null;
+		this.playerScale = {l: 6, w: 1, h: 10};
 
 		// Used for standardized user input
 		this.input = new StInput(window);
@@ -79,6 +80,7 @@ class Game {
 
 		this.paused = false;
 
+		// Timing variables, used to ensure that tasks are done in a specific frequency
 		this.prevFrameTime = (new Date()).getTime();
 		this.lastServerUpdateTime = this.prevFrameTime;
 		this.lastPositionCheckTime = this.prevFrameTime;
@@ -91,7 +93,7 @@ class Game {
 			let words = cmd.split(' ');
 			switch(words[0]) {
 				case 'help':
-					let html = '<br><h3>Welcome to VWORLD</h3>';
+					let html = '<h3>Welcome to VWORLD</h3>';
 					html += '<hr>The controls are as follows:';
 					html += '<br>• SPACE <span style="color: #FFF76B">: Jump</span>';
 					html += '<br>• W, UP <span style="color: #FFF76B">: Move forward</span>';
@@ -107,6 +109,7 @@ class Game {
 					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
 					html += '<br>• \\pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
 					html += '<br>• \\rename<span style="color: #FFF76B">: Rename your character</span>';
+					html += '<br>• \\scale ~ ~ ~<span style="color: #FFF76B">: Set your (length=' + this.player.length + ', width=' + this.player.width + ', height=' + this.player.height + ')</span>';
 					html += '<br>';
 					html += '<br>';
 					this.addChatMessage('', html, '#FFFFFF');
@@ -131,6 +134,27 @@ class Game {
 					localStorage.removeItem('playerName');
 					location.reload();
 					break;
+				case 'scale':
+					if(words.length != 4) {
+						this.addChatMessage('', 'Invalid number of parameters. Must contain length, width, and height', '#FF4949');
+						return;
+					}
+
+					let l = words[1], w = words[2], h = words[3];
+					if(l == '~') l = this.player.length;
+					if(w == '~') w = this.player.width;
+					if(h == '~') h = this.player.height;
+					l = parseFloat(l);
+					w = parseFloat(w);
+					h = parseFloat(h);
+					if(isNaN(l) || isNaN(w) || isNaN(h)) {
+						this.addChatMessage('', 'Invalid parameters, must be numbers', '#FF4949');
+						return;
+					}
+					this.playerScale = {l: l, w: w, h: h};
+					this.remove(this.player);
+					this.player = null;
+					break;
 				default:
 					this.addChatMessage('', 'Command not found, type \\help for more information', '#FF4949');
 			}
@@ -153,11 +177,10 @@ class Game {
 		if(this.player != null) this.remove(this.player);
 		// Ensure that there is a spawn
 		if(this.spawn === undefined) this.spawn = zeroVector;
-		let l = 1, w = 1, h = 1;
 		let color = 0xFFFFFF;
-		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x + Math.random() * 10 - 5, this.spawn.y, this.spawn.z + Math.random() * 10 - 5), {l: l, w: w, h: h}, zeroVector, color, 0.8, 0.1, 30);
+		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y, this.spawn.z), {l: this.playerScale.l, w: this.playerScale.w, h: this.playerScale.h}, zeroVector, color);
 		this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
-		this.player.velocity = 10;
+		this.player.velocity = 1;
 		this.player.maxVelocity = 70;
 		this.player.jumping = false;
 		this.player.jumpVelocity = 150;
@@ -183,9 +206,9 @@ class Game {
 			this.updateControls();
 			this.renderer.render(this.scene, this.camera);
 		}
-		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 33.33) {
+		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 100) {
 			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
-			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z]);
+			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
 			this.lastServerUpdateTime = (new Date()).getTime();
 		}
 		// Every second, check if the player has not moved, if no, then grant access to a free jump
@@ -276,7 +299,8 @@ class Game {
 						let vx = v.x + this.player.velocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z + this.player.velocity * vz2 / dt * this.deltaTime * 100;
 
-						if(dt > maxVelocity) { // Limit velocity
+						let vel = Math.sqrt(vx * vx + vz * vz);
+						if(vel > maxVelocity) { // Limit velocity
 							vx = vx2 / dt * maxVelocity
 							vz = vz2 / dt * maxVelocity
 						}
@@ -301,9 +325,10 @@ class Game {
 						let vx = v.x - this.player.velocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z - this.player.velocity * vz2 / dt * this.deltaTime * 100;
 
-						if(dt > maxVelocity) { // Limit velocity
-							vx = vx2 / dt * maxVelocity
-							vz = vz2 / dt * maxVelocity
+						let vel = Math.sqrt(vx * vx + vz * vz);
+						if(vel > maxVelocity) { // Limit velocity
+							vx = -vx2 / dt * maxVelocity
+							vz = -vz2 / dt * maxVelocity
 						}
 						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 						this.player.setAngularVelocity(zeroVector);
@@ -319,7 +344,7 @@ class Game {
 					this.player.jumping = true;
 				}
 			} else { // While the player is in the air, grand a small amount of influence
-				let influenceVelocity = 0//.0000001;
+				let influenceVelocity = 0.01;
 				// Moving forward
 				if(this.input.down('up_arrow') || this.input.down('w')) {
 					let vx2 = game.player.position.x - game.camera.position.x;
@@ -329,7 +354,9 @@ class Game {
 						let v = this.player.getLinearVelocity();
 						let vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
-						if(dt > this.player.maxVelocity) { // Limit velocity
+						
+						let vel = Math.sqrt(vx * vx + vz * vz);
+						if(vel > this.player.maxVelocity) { // Limit velocity
 							vx = vx2 / dt * this.player.maxVelocity
 							vz = vz2 / dt * this.player.maxVelocity
 						}
@@ -347,9 +374,11 @@ class Game {
 						let v = this.player.getLinearVelocity();
 						let vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
-						if(dt > this.player.maxVelocity) { // Limit velocity
-							vx = vx2 / dt * this.player.maxVelocity
-							vz = vz2 / dt * this.player.maxVelocity
+						
+						let vel = Math.sqrt(vx * vx + vz * vz);
+						if(vel > this.player.maxVelocity) { // Limit velocity
+							vx = -vx2 / dt * this.player.maxVelocity
+							vz = -vz2 / dt * this.player.maxVelocity
 						}
 						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 					} else {
@@ -377,7 +406,6 @@ class Game {
 		this.player.rotation.y = theta; // Facing against the camera
 		this.player.rotation.z = 0;
 		this.player.__dirtyRotation = true;
-		//this.player.setAngularVelocity(zeroVector);
 	}
 
 	// Get/set gravity
@@ -410,7 +438,8 @@ class Game {
 
 		this.socket = io();
 		this.socket.emit('initialize', player_name, server_name);
-		this.chat('\\help')
+		this.addChatMessage('', 'Type "\\help" for help')
+		//this.chat('\\help');
 
 		this.socket.on('map', function(name, map) {
 			this.player_name = name;
@@ -419,24 +448,33 @@ class Game {
 
 		this.socket.on('update_player_state', function(state) {
 			let name = state.shift();
-			if(typeof name != 'string' || state.length != 12) return;
+			if(typeof name != 'string' || state.length != 15) return;
 			if(this.player != null && name == this.player_name) return; // Ignore self
 			
 			for(let item of state) { // If anything is not a number, ignore the message
 				if(typeof item != 'number') return;
 			}
 			
-			if(this.players[name] === undefined) { // Create online player object
-				let l = 1, w = 1, h = 1;
-				let color = 0xFFFFFF;
-				let p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {l: l, w: w, h: h}, new THREE.Vector3(state[3], state[4], state[5]), color, 0.8, 0.1, Infinity);
+			let p = this.players[name];
+			let l = state[12], w = state[13], h = state[14];
+			let color = 0xFFFFFF;
+			if(p === undefined) { // Create online player object
+				p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {l: l, w: w, h: h}, new THREE.Vector3(state[3], state[4], state[5]), color);
+				p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
+				p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
 				this.players[name] = p;
 			} else { // Update player position
-				let p = this.players[name];
+				if(p.length != l || p.width != w || p.height != h) {
+					// One of the scales changed, we need to reset the player
+					p = this.players[name] = p.setScale(l, w, h);
+				}
+
 				p.__dirtyPosition = true;
 				p.position.set(state[0], state[1], state[2]);
 				p.__dirtyRotation = true;
 				p.rotation.set(state[3], state[4], state[5]);
+				p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
+				p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
 			}
 		}.bind(this));
 
@@ -740,11 +778,11 @@ class Game {
 	addPlayer(name, position, scale, rotation, color, friction = 0.8, restitution = 0.1, mass = 30) {
 		let playerGeometry = new THREE.Geometry();
 		playerGeometry.vertices = [
-			new THREE.Vector3(-0.3, -4, 0),
-			new THREE.Vector3(-0.3, 4, 0),
-			new THREE.Vector3(0.3, 4, 0),
-			new THREE.Vector3(0.3, -4, 0),
-			new THREE.Vector3(0, 0, 4)
+			new THREE.Vector3(-scale.w / 2, -scale.h / 2, 0),
+			new THREE.Vector3(-scale.w / 2, scale.h / 2, 0),
+			new THREE.Vector3(scale.w / 2, scale.h / 2, 0),
+			new THREE.Vector3(scale.w / 2, -scale.h / 2, 0),
+			new THREE.Vector3(0, 0, scale.l)
 		];
 		playerGeometry.faces = [
 			new THREE.Face3(0, 1, 2),
@@ -766,6 +804,9 @@ class Game {
 		player.meshType = 'player';
 		player.position.set(position.x, position.y, position.z);
 		//player.castShadow = true;
+		player.length = scale.l;
+		player.width = scale.w;
+		player.height = scale.h;
 
 		let _color = this.strColor(name);
 		player.label = new THREE.TextSprite({
@@ -774,11 +815,20 @@ class Game {
 			fontSize: 1.8,
 			fillColor: 0xFFFFFF,
 		});
-		player.label.position.set(0, 7, 0);
+		player.label.position.set(0, player.height / 2 + 2, 0);
 		player.label.material.depthTest = false;
 		player.add(player.label);
 		
 		this.add(player);
+
+		// A function for setting the scale of non-main players
+		// (i.e. not the main game.player, because it has special added functions)
+		player.setScale = (l, w, h) => {
+			let scale = {l: l, w: w, h: h};
+			this.remove(player);
+			player = this.addPlayer(name, position, scale, rotation, color, friction, restitution, mass);
+			return player;
+		}
 		return player;
 	}
 
