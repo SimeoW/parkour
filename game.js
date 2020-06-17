@@ -77,7 +77,8 @@ class Game {
 		this.paused = false;
 
 		// Timing variables, used to ensure that tasks are done in a specific frequency
-		this.prevFrameTime = (new Date()).getTime();
+		this.currentFrameTime = (new Date()).getTime();
+		this.prevFrameTime = this.currentFrameTime;
 		this.lastServerUpdateTime = this.prevFrameTime;
 		this.lastPositionCheckTime = this.prevFrameTime;
 		this.step();
@@ -85,8 +86,10 @@ class Game {
 
 	chat(msg) {
 		if(msg.startsWith('/') || msg.startsWith('\\')) {
-			let cmd = msg.substring(1).toLowerCase();
+			let cmd = msg.substring(1);
 			let words = cmd.split(/\s+/);
+			if(words.length == 0) return;
+			words[0] = words[0].toLowerCase();
 			switch(words[0]) {
 				case 'help':
 					let html = '<h3>Welcome to VWORLD, you are in server "' + this.server_name + '"</h3>';
@@ -101,25 +104,29 @@ class Game {
 
 					html += '<hr>The chat commands are as follows (~ can be anything):';
 					html += '<br>• \\help <span style="color: #FFF76B">: List the available commands</span>';
+					html += '<br>• \\fov ~<span style="color: #FFF76B">: Set the camera\'s field of view</span>';
 					html += '<br>• \\list <span style="color: #FFF76B">: List the players currently on the server</span>';
 					html += '<br>• \\pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
 					html += '<br>• \\rename<span style="color: #FFF76B">: Rename your character</span>';
 					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
 					html += '<br>• \\scale ~ ~ ~<span style="color: #FFF76B">: Set your (length=' + this.player.length + ', width=' + this.player.width + ', height=' + this.player.height + ')</span>';
-					html += '<br>• \\server ~<span style="color: #FFF76B">: Move to a new server</span>';
+					html += '<br>• \\server SERVER_NAME<span style="color: #FFF76B">: Move to a new server</span>';
 					html += '<br>• \\servers<span style="color: #FFF76B">: List the currently active servers</span>';
-					html += '<br>• \\fov ~<span style="color: #FFF76B">: Set the camera\'s field of view</span>';
+					html += '<br>• \\tp PLAYER_NAME<span style="color: #FFF76B">: Teleport to a player</span>';
 					html += '<br>';
 					html += '<br>';
 					this.addChatMessage('', html, '#FFFFFF');
 					break;
+
 				case 'list':
 					this.socket.emit('list');
 					break;
+
 				case 'reset':
 					this.remove(this.player);
 					this.player = null;
 					break;
+
 				case 'pause':
 					if(this.paused) {
 						this.paused = false;
@@ -129,10 +136,12 @@ class Game {
 						this.addChatMessage('', 'The game has been paused', '#FFFFFF');
 					}
 					break;
+
 				case 'rename':
 					localStorage.removeItem('playerName');
 					location.reload();
 					break;
+
 				case 'scale':
 					if(words.length != 4) {
 						this.addChatMessage('', 'Invalid number of parameters. Must contain length, width, and height', '#FF4949');
@@ -154,9 +163,11 @@ class Game {
 					this.remove(this.player);
 					this.player = null;
 					break;
+
 				case 'servers':
 					this.socket.emit('rooms');
 					break;
+
 				case 'server':
 					if(words.length != 2) {
 						this.addChatMessage('', 'Invalid number of parameters. Must contain a server name', '#FF4949');
@@ -167,6 +178,7 @@ class Game {
 					localStorage.setItem('serverName', s);
 					location.reload();
 					break;
+
 				case 'fov':
 					if(words.length != 2) {
 						this.addChatMessage('', 'Invalid number of parameters. Must contain an FOV value', '#FF4949');
@@ -177,6 +189,22 @@ class Game {
 					this.fov = parseFloat(fov);
 					break;
 
+				case 'tp':
+					if(words.length != 2) {
+						this.addChatMessage('', 'Invalid number of parameters. Must contain a player\'s name', '#FF4949');
+						return;
+					}
+					let name = words[1], player;
+					if(name == this.player_name) player = this.player;
+					else player = this.players[name];
+					console.log(name, player)
+					if(player === undefined || this.player == null) {
+						this.addChatMessage('', 'Player could not be found', '#FF4949');
+						return;
+					}
+					this.player.__dirtyPosition = true;
+					this.player.position.set(player.position.x + Math.random() * 2 - 1, player.position.y + Math.random() * 2 - 1, player.position.z + Math.random() * 2 - 1);
+					break;
 				default:
 					this.addChatMessage('', 'Command not found, type \\help for more information', '#FF4949');
 			}
@@ -216,21 +244,17 @@ class Game {
 
 	// Physics for a single frame
 	step() {
+		this.prevFrameTime = this.currentFrameTime;
 		this.currentFrameTime = (new Date()).getTime();
 		this.deltaTime = (this.currentFrameTime - this.prevFrameTime) / 1000;
-
+		this.updateControls();
+		this.input.endFrame();
 		if(!this.paused) {
-			this.updateControls();
 			this.playerMovement();
 			this.scene.simulate();
 		} else {
-			this.updateControls();
 			this.draw();
 		}
-		this.input.endFrame();
-		this.prevFrameTime = this.currentFrameTime;
-		//console.log(1 / this.deltaTime)
-
 	}
 
 	draw() {
@@ -468,7 +492,7 @@ class Game {
 
 		this.socket = io();
 		this.socket.emit('initialize', player_name, server_name);
-		if(this.server_name != '') this.addChatMessage('', 'You are now in server "' + this.server_name + '"')
+		this.socket.emit('list');
 		this.addChatMessage('', 'Type "\\help" for help')
 		//this.chat('\\help');
 
@@ -526,7 +550,7 @@ class Game {
 
 		this.socket.on('list', function(names) {
 			names.sort();
-			let html = 'Users online:';
+			let html = 'Users online (server="' + this.server_name + '"):';
 			for(let name of names) {
 				let color = this.strColor(name);
 				html += '<br><span style="color: ' + color + '">' + '•</span> <span style="color: #FFF76B">' + name + '</span>';
@@ -734,7 +758,7 @@ class Game {
 			}
 			//console.log(`Finished loading "${name}"`);
 		}
-		this.respawnHeight -= 30;
+		this.respawnHeight -= 10;
 		this.initializePlayer();
 	}
 
