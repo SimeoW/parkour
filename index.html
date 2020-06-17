@@ -33,7 +33,6 @@
       #chat {
         font-family: monospace;
         min-width: 100%;
-        width: 144px;
         border: none;
         outline: none;
         border-radius: 100px;
@@ -50,8 +49,10 @@
       #chatfeed {
         font-family: monospace;
         padding-left: 0px;
-        width: 100%;
         color: #FFF;
+      }
+      #chatfeed td {
+        max-width: 400px;
       }
       #chatname, #chatserver {
         padding: 1px 10px;
@@ -80,7 +81,7 @@
   <body>
     <div id='chatbar'>
       <table id='chatfeed'></table>
-      <input id='chat' type='text' placeholder='Send a message' onkeypress='this.style.width=(this.value.length+5)*8+"px";'/>
+      <input id='chat' type='text' placeholder='Send a message'/>
     </div>
     <div id='viewport'></div>
   </body>
@@ -97,6 +98,9 @@
       localStorage.setItem('playerName', player_name);
     } else {
       player_name = localStorage.getItem('playerName');
+    }
+    if(localStorage.getItem('serverName') != null) {
+      server_name = localStorage.getItem('serverName');
     }
 
     // Create a new instance of the game

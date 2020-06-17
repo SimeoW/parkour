@@ -6,12 +6,8 @@ window.onkeypress = function(e) {
 	if(id == 'chat') {
 		if(e.key == 'Enter') {
 			game.chat(textbox.value);
-			chat.value = '';
-			chat.style.width = 144;
-			chat.blur();
-		}
-		if(e.key == 'Escape') {
-			document.activeElement.blur();
+			textbox.value = '';
+			//chat.blur();
 		}
 	} else {
 		if(e.key == 'Enter' || e.key == 't') {
@@ -27,9 +23,11 @@ window.onkeypress = function(e) {
 }
 window.onkeyup = function(e) {
 	let id = document.activeElement.id;
+	let textbox = document.getElementById('chat');
 	if(id == 'chat') {
 		if(e.key == 'Escape') {
-			document.activeElement.blur();
+			textbox.value = '';
+			textbox.blur();
 		}
 	}
 }
@@ -39,7 +37,7 @@ class Game {
 		this.fixedTimeStep = 1 / 60;
 
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
-
+		this.fov = 40;
 		this.scene = new Physijs.Scene({ fixedTimeStep: this.fixedTimeStep });
 
 		this.server_name = null;
@@ -62,9 +60,7 @@ class Game {
 		document.getElementById('viewport').appendChild(this.renderer.domElement);
 
 		// Keep everything synchronized by rendering after each physics update
-		this.scene.addEventListener('update', function() {
-			this.renderer.render(this.scene, this.camera);
-		}.bind(this)); // Keep the same this
+		this.scene.addEventListener('update', this.draw.bind(this)); // Keep the same this
 
 		this.spawn = null;
 		this.players = [];
@@ -90,10 +86,10 @@ class Game {
 	chat(msg) {
 		if(msg.startsWith('/') || msg.startsWith('\\')) {
 			let cmd = msg.substring(1).toLowerCase();
-			let words = cmd.split(' ');
+			let words = cmd.split(/\s+/);
 			switch(words[0]) {
 				case 'help':
-					let html = '<h3>Welcome to VWORLD</h3>';
+					let html = '<h3>Welcome to VWORLD, you are in server "' + this.server_name + '"</h3>';
 					html += '<hr>The controls are as follows:';
 					html += '<br>• SPACE <span style="color: #FFF76B">: Jump</span>';
 					html += '<br>• W, UP <span style="color: #FFF76B">: Move forward</span>';
@@ -103,13 +99,16 @@ class Game {
 					html += '<br>• SHIFT <span style="color: #FFF76B">: Sprint</span>';
 					html += '<br>• T, ENTER <span style="color: #FFF76B">: Chat</span>';
 
-					html += '<hr>The chat commands are as follows:';
+					html += '<hr>The chat commands are as follows (~ can be anything):';
 					html += '<br>• \\help <span style="color: #FFF76B">: List the available commands</span>';
 					html += '<br>• \\list <span style="color: #FFF76B">: List the players currently on the server</span>';
-					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
 					html += '<br>• \\pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
 					html += '<br>• \\rename<span style="color: #FFF76B">: Rename your character</span>';
+					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
 					html += '<br>• \\scale ~ ~ ~<span style="color: #FFF76B">: Set your (length=' + this.player.length + ', width=' + this.player.width + ', height=' + this.player.height + ')</span>';
+					html += '<br>• \\server ~<span style="color: #FFF76B">: Move to a new server</span>';
+					html += '<br>• \\servers<span style="color: #FFF76B">: List the currently active servers</span>';
+					html += '<br>• \\fov ~<span style="color: #FFF76B">: Set the camera\'s field of view</span>';
 					html += '<br>';
 					html += '<br>';
 					this.addChatMessage('', html, '#FFFFFF');
@@ -141,9 +140,9 @@ class Game {
 					}
 
 					let l = words[1], w = words[2], h = words[3];
-					if(l == '~') l = this.player.length;
-					if(w == '~') w = this.player.width;
-					if(h == '~') h = this.player.height;
+					if(l == '~') l = 6;
+					if(w == '~') w = 1;
+					if(h == '~') h = 10;
 					l = parseFloat(l);
 					w = parseFloat(w);
 					h = parseFloat(h);
@@ -155,9 +154,33 @@ class Game {
 					this.remove(this.player);
 					this.player = null;
 					break;
+				case 'servers':
+					this.socket.emit('rooms');
+					break;
+				case 'server':
+					if(words.length != 2) {
+						this.addChatMessage('', 'Invalid number of parameters. Must contain a server name', '#FF4949');
+						return;
+					}
+
+					let s = words[1];
+					localStorage.setItem('serverName', s);
+					location.reload();
+					break;
+				case 'fov':
+					if(words.length != 2) {
+						this.addChatMessage('', 'Invalid number of parameters. Must contain an FOV value', '#FF4949');
+						return;
+					}
+					let fov = words[1];
+					if(fov == '~') fov = 40;
+					this.fov = parseFloat(fov);
+					break;
+
 				default:
 					this.addChatMessage('', 'Command not found, type \\help for more information', '#FF4949');
 			}
+			document.getElementById('chat').blur();
 		} else {
 			msg = msg.substring(0, 256);
 			this.socket.emit('chat', msg);
@@ -196,33 +219,23 @@ class Game {
 		this.currentFrameTime = (new Date()).getTime();
 		this.deltaTime = (this.currentFrameTime - this.prevFrameTime) / 1000;
 
-		this.updateCamera();
-
 		if(!this.paused) {
 			this.updateControls();
 			this.playerMovement();
 			this.scene.simulate();
 		} else {
 			this.updateControls();
-			this.renderer.render(this.scene, this.camera);
-		}
-		if(this.player != null && this.currentFrameTime - this.lastServerUpdateTime >= 50) {
-			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
-			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
-			this.lastServerUpdateTime = (new Date()).getTime();
-		}
-		// Every second, check if the player has not moved, if no, then grant access to a free jump
-		if(this.player != null && this.currentFrameTime - this.lastPositionCheckTime >= 1000) {
-			// If the player has not moved
-			if(this.player.position.x == this.player.previousPosition.x && this.player.position.y == this.player.previousPosition.y && this.player.position.z == this.player.previousPosition.z) {
-				this.player.jumping = false;
-			}
-			this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
-			this.lastPositionCheckTime = (new Date()).getTime();
+			this.draw();
 		}
 		this.input.endFrame();
 		this.prevFrameTime = this.currentFrameTime;
+		//console.log(1 / this.deltaTime)
 
+	}
+
+	draw() {
+		this.updateCamera();
+		this.renderer.render(this.scene, this.camera);
 		requestAnimationFrame(this.step.bind(this));
 	}
 
@@ -233,6 +246,7 @@ class Game {
 		let y = (this.controls.target.y * this.controls.smoothing + this.player.position.y) / (this.controls.smoothing + 1);
 		let z = (this.controls.target.z * this.controls.smoothing + this.player.position.z) / (this.controls.smoothing + 1);
 		this.controls.target = new THREE.Vector3(x, y, z);
+		this.camera.setFocalLength(this.fov);
 	}
 
 	// Handle the camera orbit
@@ -355,11 +369,11 @@ class Game {
 						let vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
 						
-						let vel = Math.sqrt(vx * vx + vz * vz);
-						if(vel > this.player.maxVelocity) { // Limit velocity
-							vx = vx2 / dt * this.player.maxVelocity
-							vz = vz2 / dt * this.player.maxVelocity
-						}
+						//let vel = Math.sqrt(vx * vx + vz * vz);
+						//if(vel > this.player.maxVelocity) { // Limit velocity
+						//	vx = vx2 / dt * this.player.maxVelocity
+						//	vz = vz2 / dt * this.player.maxVelocity
+						//}
 						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 					} else {
 						console.log('Error: distance is 0')
@@ -375,17 +389,33 @@ class Game {
 						let vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
 						let vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
 						
-						let vel = Math.sqrt(vx * vx + vz * vz);
-						if(vel > this.player.maxVelocity) { // Limit velocity
-							vx = -vx2 / dt * this.player.maxVelocity
-							vz = -vz2 / dt * this.player.maxVelocity
-						}
+						//let vel = Math.sqrt(vx * vx + vz * vz);
+						//if(vel > this.player.maxVelocity) { // Limit velocity
+						//	vx = -vx2 / dt * this.player.maxVelocity
+						//	vz = -vz2 / dt * this.player.maxVelocity
+						//}
 						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
 					} else {
 						console.log('Error: distance is 0')
 					}
 				}
 			}
+		}
+
+		// Every second, check if the player has not moved, if no, then grant access to a free jump
+		if(this.currentFrameTime - this.lastPositionCheckTime >= 1000) {
+			// If the player has not moved
+			if(this.player.position.x == this.player.previousPosition.x && this.player.position.y == this.player.previousPosition.y && this.player.position.z == this.player.previousPosition.z) {
+				this.player.jumping = false;
+			}
+			this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
+			this.lastPositionCheckTime = (new Date()).getTime();
+		}
+		// Update the server
+		if(this.currentFrameTime - this.lastServerUpdateTime >= 50) {
+			let p = this.player.position, r = this.player.rotation, lv = this.player.getLinearVelocity(), av = this.player.getAngularVelocity();
+			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
+			this.lastServerUpdateTime = (new Date()).getTime();
 		}
 
 		// Falling out of bounds
@@ -438,6 +468,7 @@ class Game {
 
 		this.socket = io();
 		this.socket.emit('initialize', player_name, server_name);
+		if(this.server_name != '') this.addChatMessage('', 'You are now in server "' + this.server_name + '"')
 		this.addChatMessage('', 'Type "\\help" for help')
 		//this.chat('\\help');
 
@@ -496,7 +527,7 @@ class Game {
 		this.socket.on('list', function(names) {
 			names.sort();
 			let html = 'Users online:';
-			for(name of names) {
+			for(let name of names) {
 				let color = this.strColor(name);
 				html += '<br><span style="color: ' + color + '">' + '•</span> <span style="color: #FFF76B">' + name + '</span>';
 			}
@@ -504,14 +535,14 @@ class Game {
 		}.bind(this));
 
 		this.socket.on('rooms', function(rooms) {
+			let html = 'Active servers:';
 			for(let i in rooms) {
-				let room = rooms[i][0],
-					count = rooms[i][1];
-				let unit = (count == 1 ? 'person' : 'people');
-				rooms[i] = room + ' (' + count + ' ' + unit + ')';
+				let room = rooms[i][0], unit = rooms[i][1].toString();
+				unit += (unit == '1' ? ' player' : ' players');
+				html += '<br>• "<span style="color: #FFF76B">' + room + '</span>": <span style="color: #8DDBFF">' + unit + '</span>';
 			}
-			console.log('Rooms online:\n' + rooms.join('\n'));
-		});
+			this.addChatMessage('', html, '#FFFFFF');
+		}.bind(this));
 		return true;
 	}
 
@@ -549,7 +580,7 @@ class Game {
 		}
 		let chatfeed = document.getElementById('chatfeed');
 		chatfeed.innerHTML += html;
-		if(chatfeed.children.length > 30) chatfeed.children[0].remove();
+		if(chatfeed.children.length > 5) chatfeed.children[0].remove();
 	}
 
 	// Load map from JSON object
