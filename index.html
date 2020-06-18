@@ -1,120 +1,154 @@
 <!DOCTYLE html>
 <html>
-  <head>
-    <meta charset='utf-8'/>
-    <meta name='viewport' content='initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, user-scalable=no'>
-
-    <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
-    <title>VWORLD</title>
-    <style>
-      html {
-        height: 100%;
-        margin: 0;
-        padding: 0px;
-        width: 100%;
-      }
-      body {
-        background-color: #101010
-      }
-      canvas {
-        width: 100%;
-        height: 100%;
-        position: fixed;
-        left: 0;
-        top: 0;
-        z-index: -1;
-      }
-      #chatbar {
-        position: fixed;
-        left: 10px;
-        bottom: 10px;
-        user-select: none;
-      }
-      #chat {
-        font-family: monospace;
-        min-width: 100%;
-        border: none;
-        outline: none;
-        border-radius: 100px;
-        padding: 5px;
-        margin-top: 9px;
-        text-align: center;
-        color: #FFF;
-        background-color: rgba(30, 30, 30, 0.7);
-      }
-      #chat::placeholder {
-        color: #FFF;
-        opacity: 0.7;
-      }
-      #chatfeed {
-        font-family: monospace;
-        padding-left: 0px;
-        color: #FFF;
-      }
-      #chatfeed td {
-        max-width: 400px;
-      }
-      #chatname, #chatserver {
-        padding: 1px 10px;
-        border-radius: 8px;
-        margin-right: 10px;
-      }
-      #chatname {
-        color: #FFF;
-        word-break: break-all;
-      }
-      #chatcontents {
-        text-shadow: 0px 0px 8px #000;
-        word-break: break-all;
-      }
-      #chatserver {
-        color: #FFF;
-        background-color: rgba(30, 30, 30, 0.6);
-      }
-    </style>
-    <script type='text/javascript' src='lib/three.js'></script>
-    <script type='text/javascript' src='lib/physi.js'></script>
-    <script type='text/javascript' src='lib/stinput.js'></script>
-    <script type='text/javascript' src='lib/camera_orbit.js'></script>
-    <script type='text/javascript' src='lib/text_texture.js'></script>
-    <script type='text/javascript' src='lib/text_sprite.js'></script>
-    <script type='text/javascript' src='socket.io/socket.io.js'></script>
-  </head>
-  <body>
-    <div id='chatbar'>
-      <table id='chatfeed'></table>
-      <input id='chat' type='text' placeholder='Send a message' maxlength="256" />
-    </div>
-    <div id='viewport'></div>
-  </body>
-  <script type='text/javascript' src='game.js'></script>
-  <script type='text/javascript'>
-    'use strict';
-    Physijs.scripts.worker = 'lib/physijs_worker.js';
-    Physijs.scripts.ammo='ammo.js';
-    
-
-    let player_name = 'Guest', server_name = '';
-    if(localStorage.getItem('playerName') == null) {
-      player_name = prompt('Welcome to VWORLD! What is your name? (character limit: 20)', player_name).substring(0, 20) || player_name;
-      localStorage.setItem('playerName', player_name);
-    } else {
-      player_name = localStorage.getItem('playerName');
-    }
-    if(localStorage.getItem('serverName') != null) {
-      server_name = localStorage.getItem('serverName');
-    }
-
-    // Create a new instance of the game
-    const game = new Game();
-    game.connect(player_name, server_name);
-    
-    // On window resize, resize the renderer as well
-    window.addEventListener('resize', onWindowResize, false);
-    function onWindowResize(){
-      game.camera.aspect = window.innerWidth / window.innerHeight;
-      game.camera.updateProjectionMatrix();
-      game.renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-  </script>
+	<head>
+		<meta charset='utf-8'/>
+		<meta name='viewport' content='initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, user-scalable=no'>
+		<link rel="shortcut icon" type="image/png" href="/favicon.png"/>
+		<title>VWORLD</title>
+		<style>
+			html {
+			height: 100%;
+			margin: 0;
+			padding: 0px;
+			width: 100%;
+			}
+			body {
+			background-color: #101010
+			}
+			canvas {
+			width: 100%;
+			height: 100%;
+			position: fixed;
+			left: 0;
+			top: 0;
+			z-index: -1;
+			}
+			#chatbar {
+			position: fixed;
+			left: 10px;
+			bottom: 10px;
+			user-select: none;
+			}
+			#chat {
+			font-family: monospace;
+			min-width: 100%;
+			border: none;
+			outline: none;
+			border-radius: 100px;
+			padding: 5px;
+			margin-top: 9px;
+			text-align: center;
+			color: #FFF;
+			background-color: rgba(30, 30, 30, 0.7);
+			}
+			#chat::placeholder {
+			color: #FFF;
+			opacity: 0.7;
+			}
+			#chatfeed {
+			font-family: monospace;
+			padding-left: 0px;
+			color: #FFF;
+			}
+			#chatfeed td {
+			max-width: 400px;
+			}
+			#chatname, #chatserver {
+			padding: 1px 10px;
+			border-radius: 8px;
+			margin-right: 10px;
+			}
+			#chatname {
+			color: #FFF;
+			word-break: break-all;
+			}
+			#chatcontents {
+			text-shadow: 0px 0px 8px #000;
+			word-break: break-all;
+			}
+			#chatserver {
+			color: #FFF;
+			background-color: rgba(30, 30, 30, 0.6);
+			}
+		</style>
+		<script type='text/javascript' src='lib/three.js'></script>
+		<script type='text/javascript' src='lib/physi.js'></script>
+		<script type='text/javascript' src='lib/stinput.js'></script>
+		<script type='text/javascript' src='lib/camera_orbit.js'></script>
+		<script type='text/javascript' src='lib/text_texture.js'></script>
+		<script type='text/javascript' src='lib/text_sprite.js'></script>
+		<script type='text/javascript' src='socket.io/socket.io.js'></script>
+	</head>
+	<body>
+		<div id='chatbar'>
+			<table id='chatfeed'></table>
+			<input id='chat' type='text' placeholder='Send a message' maxlength="256" />
+		</div>
+		<div id='viewport'></div>
+	</body>
+	<script type='text/javascript' src='random.js'></script>
+	<script type='text/javascript' src='chunks.js'></script>
+	<script type='text/javascript' src='game.js'></script>
+	<script type='text/javascript'>
+		'use strict';
+		Physijs.scripts.worker = 'lib/physijs_worker.js';
+		Physijs.scripts.ammo='ammo.js';
+		
+		
+		let player_name = 'Guest', server_name = '';
+		if(localStorage.getItem('playerName') == null) {
+			player_name = prompt('Welcome to VWORLD! What is your name? (character limit: 20)', player_name).substring(0, 20) || player_name;
+			localStorage.setItem('playerName', player_name);
+		} else {
+			player_name = localStorage.getItem('playerName');
+		}
+		if(localStorage.getItem('serverName') != null) {
+			server_name = localStorage.getItem('serverName');
+		}
+		
+		// Create a new instance of the game
+		const game = new Game();
+		game.connect(player_name, server_name);
+		
+		
+		// Handle the chat bar
+		window.onkeypress = function(e) {
+			let id = document.activeElement.id;
+			let textbox = document.getElementById('chat');
+			if(id == 'chat') {
+				if(e.key == 'Enter') {
+					game.chat(textbox.value);
+					textbox.value = '';
+				}
+			} else {
+				if(e.key == 'Enter' || e.key == 't') {
+					textbox.focus();
+					textbox.select();
+					e.preventDefault();
+				}
+				if(e.key == '/' || e.key == '\\') {
+					textbox.focus();
+					textbox.select();
+				}
+			}
+		}
+		window.onkeyup = function(e) {
+			let id = document.activeElement.id;
+			let textbox = document.getElementById('chat');
+			if(id == 'chat') {
+				if(e.key == 'Escape') {
+					textbox.value = '';
+					textbox.blur();
+				}
+			}
+		}
+		
+		// On window resize, resize the renderer as well
+		window.addEventListener('resize', onWindowResize, false);
+		function onWindowResize(){
+			game.camera.aspect = window.innerWidth / window.innerHeight;
+			game.camera.updateProjectionMatrix();
+			game.renderer.setSize(window.innerWidth, window.innerHeight);
+		}
+	</script>
 </html>
