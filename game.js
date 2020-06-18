@@ -46,7 +46,7 @@ class Game {
 		};
 
 		this.chunkSize = 128;
-		this.chunkRadius = 5;
+		this.chunkRadius = 3;
 		this.chunkManager = null;
 
 		// Used for standardized user input
