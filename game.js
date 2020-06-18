@@ -7,7 +7,7 @@ class Game {
 		this.fixedTimeStep = 1 / 60;
 
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
-		this.fov = 40;
+		this.fov = 20;
 		this.scene = new Physijs.Scene({
 			fixedTimeStep: this.fixedTimeStep
 		});

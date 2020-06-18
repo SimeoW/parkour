@@ -90,7 +90,8 @@ class ChunkManager {
 				var py = coords.y - this.noise(px * 4, 100, pz * 4, 6);
 
 				//if( > 0.75) continue;
-				if(this.simplex.noise(px / 10, pz / 10) > 0) {
+				var threshhold = this.simplex.noise(px / 10, pz / 10);
+				if(threshhold > 0.3) {
 					var p = this.chunkToPosition(px, py, pz);
 					var position = new THREE.Vector3(p.x, p.y, p.z);
 					var scale = [this.game.chunkSize / grid, this.game.chunkSize / grid, this.game.chunkSize / grid];
@@ -100,10 +101,10 @@ class ChunkManager {
 					var restitution = 0.1;
 					var mass = 0;
 					var object = this.game.addCube('generated', position, scale, rotation, color, friction, restitution, mass);
-				} else {
+				} else if(threshhold < -0.3) {
 					var p = this.chunkToPosition(px, py, pz);
 					var position = new THREE.Vector3(p.x, p.y, p.z);
-					var radius = this.game.chunkSize / grid;
+					var radius = this.game.chunkSize / grid / 2;
 					var color = 'hsl(' + Math.floor(Math.abs(this.simplex.noise3d(px / 20, 100, pz / 20) * 360)) + ', 75%, 50%)';
 					var friction = 0.9;
 					var restitution = 0.1;
