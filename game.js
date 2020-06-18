@@ -3,6 +3,7 @@ const zeroVector = new THREE.Vector3(0, 0, 0);
 class Game {
 	constructor() {
 
+		this.serverSeed = null;
 		this.fixedTimeStep = 1 / 60;
 
 		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
@@ -44,9 +45,9 @@ class Game {
 			h: 10
 		};
 
-		this.chunkSize = 512;
-		this.chunkRadius = 2;
-		this.chunkManager = new ChunkManager(this);
+		this.chunkSize = 128;
+		this.chunkRadius = 5;
+		this.chunkManager = null;
 
 		// Used for standardized user input
 		this.input = new StInput(window);
@@ -65,15 +66,81 @@ class Game {
 		this.step();
 	}
 
+	// Connect to the server, returns boolean success
+	connect(player_name, server_name) {
+		if (this.player_name != null) return false;
+		if (this.server_name != null) return false;
+		if (this.socket != null) return false;
+		this.player_name = player_name;
+		this.server_name = server_name;
+
+		this.serverSeed = this.hashString(server_name);
+		this.chunkManager = new ChunkManager(this);
+
+		this.socket = io();
+		this.socket.emit('initialize', player_name, server_name);
+		//this.socket.emit('list');
+		this.addChatMessage('', 'Type "\\help" for help')
+
+		this.socket.on('map', function(name, players, map) {
+			this.player_name = name;
+			this.loadMap(map);
+			for (var playerState of players) {
+				this.updatePlayerState(playerState);
+			}
+		}.bind(this)); // Make that this, this this
+
+		this.socket.on('update_player_state', function(state) {
+			this.updatePlayerState(state);
+		}.bind(this));
+
+		this.socket.on('remove_player', function(name) {
+			if (typeof name != 'string') return;
+			if (this.players[name] !== undefined) {
+				console.log(`Removing "${name}"`)
+				this.remove(this.players[name]);
+				delete this.players[name]
+			}
+		});
+
+		this.socket.on('chat', function(name, msg) {
+			var color = '#FFFFFF';
+			if (name != '') color = this.strColor(name);
+			this.addChatMessage(name, msg, color);
+		}.bind(this));
+
+		this.socket.on('list', function(names) {
+			names.sort();
+			var html = 'Users online (server="' + this.server_name + '"):';
+			for (var name of names) {
+				var color = this.strColor(name);
+				html += '<br><span style="color: ' + color + '">' + '•</span> <span style="color: #FFF76B">' + name + '</span>';
+			}
+			this.addChatMessage('', html, '#FFFFFF');
+		}.bind(this));
+
+		this.socket.on('rooms', function(rooms) {
+			var html = 'Active servers:';
+			for (var i in rooms) {
+				var room = rooms[i][0],
+					unit = rooms[i][1].toString();
+				unit += (unit == '1' ? ' player' : ' players');
+				html += '<br>• "<span style="color: #FFF76B">' + room + '</span>": <span style="color: #8DDBFF">' + unit + '</span>';
+			}
+			this.addChatMessage('', html, '#FFFFFF');
+		}.bind(this));
+		return true;
+	}
+
 	chat(msg) {
 		if (msg.startsWith('/') || msg.startsWith('\\')) {
-			let cmd = msg.substring(1);
-			let words = cmd.split(/\s+/);
+			var cmd = msg.substring(1);
+			var words = cmd.split(/\s+/);
 			if (words.length == 0) return;
 			words[0] = words[0].toLowerCase();
 			switch (words[0]) {
 				case 'help':
-					let html = '<h3>Welcome to VWORLD, you are in server "' + this.server_name + '"</h3>';
+					var html = '<h3>Welcome to VWORLD, you are in server "' + this.server_name + '"</h3>';
 					html += '<hr>The controls are as follows:';
 					html += '<br>• SPACE <span style="color: #FFF76B">: Jump</span>';
 					html += '<br>• W, UP <span style="color: #FFF76B">: Move forward</span>';
@@ -129,7 +196,7 @@ class Game {
 						return;
 					}
 
-					let l = words[1],
+					var l = words[1],
 						w = words[2],
 						h = words[3];
 					if (l == '~') l = 6;
@@ -161,7 +228,7 @@ class Game {
 						return;
 					}
 
-					let s = words[1];
+					var s = words[1];
 					localStorage.setItem('serverName', s);
 					location.reload();
 					break;
@@ -171,7 +238,7 @@ class Game {
 						this.addChatMessage('', 'Invalid number of parameters. Must contain an FOV value', '#FF4949');
 						return;
 					}
-					let fov = words[1];
+					var fov = words[1];
 					if (fov == '~') fov = 40;
 					this.fov = parseFloat(fov);
 					break;
@@ -181,7 +248,7 @@ class Game {
 						this.addChatMessage('', 'Invalid number of parameters. Must contain a player\'s name', '#FF4949');
 						return;
 					}
-					let name = words[1],
+					var name = words[1],
 						player;
 					if (name == this.player_name) player = this.player;
 					else player = this.players[name];
@@ -205,7 +272,7 @@ class Game {
 
 	// Clear all objects from the world
 	clearMap() {
-		for (let i in this.scene._objects) {
+		for (var i in this.scene._objects) {
 			this.remove(this.scene._objects[i]);
 		}
 		this.player = null;
@@ -216,7 +283,7 @@ class Game {
 		if (this.player != null) this.remove(this.player);
 		// Ensure that there is a spawn
 		if (this.spawn === undefined) this.spawn = zeroVector;
-		let color = 0xFFFFFF;
+		var color = 0xFFFFFF;
 		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y, this.spawn.z), {
 			l: this.playerScale.l,
 			w: this.playerScale.w,
@@ -227,6 +294,7 @@ class Game {
 		this.player.maxVelocity = 70;
 		this.player.jumping = false;
 		this.player.jumpVelocity = 100;
+		this.player.flying = true;
 		//this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 		//	game.player.jumping = false;
 		//});
@@ -250,7 +318,7 @@ class Game {
 		this.input.endFrame();
 		if (!this.paused) {
 			this.playerMovement();
-			this.chunkManager.step();
+			if(this.chunkManager != null) this.chunkManager.step();
 			this.scene.simulate();
 		} else {
 			this.draw();
@@ -260,19 +328,19 @@ class Game {
 	// Update the camera by applying a smooth transition to the next player's position
 	updateCamera() {
 		if (this.player == null) return;
-		let x = (this.controls.target.x * this.controls.smoothing + this.player.position.x) / (this.controls.smoothing + 1);
-		let y = (this.controls.target.y * this.controls.smoothing + this.player.position.y) / (this.controls.smoothing + 1);
-		let z = (this.controls.target.z * this.controls.smoothing + this.player.position.z) / (this.controls.smoothing + 1);
+		var x = (this.controls.target.x * this.controls.smoothing + this.player.position.x) / (this.controls.smoothing + 1);
+		var y = (this.controls.target.y * this.controls.smoothing + this.player.position.y) / (this.controls.smoothing + 1);
+		var z = (this.controls.target.z * this.controls.smoothing + this.player.position.z) / (this.controls.smoothing + 1);
 		this.controls.target = new THREE.Vector3(x, y, z);
 		this.camera.setFocalLength(this.fov);
 	}
 
 	// Handle the camera orbit
 	updateControls() {
-		let rotateCamera = this.input.mouseDown(this.input.MouseButtons.left);
-		let moveCamera = false;
-		let mouseDelta = this.input.mouseDelta;
-		let zoom = this.input.mouseWheel;
+		var rotateCamera = this.input.mouseDown(this.input.MouseButtons.left);
+		var moveCamera = false;
+		var mouseDelta = this.input.mouseDelta;
+		var zoom = this.input.mouseWheel;
 		mouseDelta.x /= 3;
 		mouseDelta.y /= 3;
 		if (document.activeElement.id != 'chat') {
@@ -289,7 +357,7 @@ class Game {
 			}
 		}
 
-		let controllerInput = {
+		var controllerInput = {
 			deltaTime: this.deltaTime, // time passed, in seconds, since last update call
 			rotateHorizontally: rotateCamera ? -mouseDelta.x : 0, // rotation around y axis
 			rotateVertically: rotateCamera ? -mouseDelta.y : 0, // rotate vertically around x / z axis
@@ -311,34 +379,35 @@ class Game {
 			return;
 		}
 
-		let x = Math.floor(this.player.position.x / this.chunkSize);
-		let y = Math.floor(this.player.position.y / this.chunkSize);
-		let z = Math.floor(this.player.position.z / this.chunkSize);
+		var x = Math.floor(this.player.position.x / this.chunkSize);
+		var y = Math.floor(this.player.position.y / this.chunkSize);
+		var z = Math.floor(this.player.position.z / this.chunkSize);
 		//console.log(x, y, z);
 		if (document.activeElement.id != 'chat') {
 			if (this.player != null && this.player._physijs.touches.length > 0) this.player.jumping = false;
-
+			if (this.player != null && this.player.flying) this.player.jumping = false;
+			
 			if (!this.player.jumping) {
 
 				// Sprinting
-				let maxVelocity = this.player.maxVelocity;
+				var maxVelocity = this.player.maxVelocity;
 				if (this.input.down('shift')) maxVelocity *= 1.25;
 				// Moving forward
 				if (this.input.down('up_arrow') || this.input.down('w')) {
 					this.updatePlayerRotation();
 
 					// 2D angle
-					let vx2 = game.player.position.x - game.camera.position.x;
-					let vz2 = game.player.position.z - game.camera.position.z;
-					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					var vx2 = game.player.position.x - game.camera.position.x;
+					var vz2 = game.player.position.z - game.camera.position.z;
+					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 
 					if (dt != 0) {
-						let v = this.player.getLinearVelocity();
+						var v = this.player.getLinearVelocity();
 						//console.log(v.z)
-						let vx = v.x + this.player.velocity * vx2 / dt * this.deltaTime * 100;
-						let vz = v.z + this.player.velocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x + this.player.velocity * vx2 / dt * this.deltaTime * 100;
+						var vz = v.z + this.player.velocity * vz2 / dt * this.deltaTime * 100;
 
-						let vel = Math.sqrt(vx * vx + vz * vz);
+						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
 							vx = vx2 / dt * maxVelocity
 							vz = vz2 / dt * maxVelocity
@@ -354,17 +423,17 @@ class Game {
 					this.updatePlayerRotation();
 
 					// 2D angle
-					let vx2 = game.player.position.x - game.camera.position.x;
-					let vz2 = game.player.position.z - game.camera.position.z;
-					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					var vx2 = game.player.position.x - game.camera.position.x;
+					var vz2 = game.player.position.z - game.camera.position.z;
+					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 
 					if (dt != 0) {
-						let v = this.player.getLinearVelocity();
+						var v = this.player.getLinearVelocity();
 						//console.log(v.z)
-						let vx = v.x - this.player.velocity * vx2 / dt * this.deltaTime * 100;
-						let vz = v.z - this.player.velocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x - this.player.velocity * vx2 / dt * this.deltaTime * 100;
+						var vz = v.z - this.player.velocity * vz2 / dt * this.deltaTime * 100;
 
-						let vel = Math.sqrt(vx * vx + vz * vz);
+						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
 							vx = -vx2 / dt * maxVelocity
 							vz = -vz2 / dt * maxVelocity
@@ -377,25 +446,25 @@ class Game {
 				}
 				// Jumping
 				if (this.input.down('space')) {
-					let v = this.player.getLinearVelocity();
+					var v = this.player.getLinearVelocity();
 					if (v.y < 0) v.y = 0;
 					//this.player.applyCentralImpulse(new THREE.Vector3(0, this.player.jumpVelocity, 0))
 					this.player.setLinearVelocity(new THREE.Vector3(v.x, this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
 					this.player.jumping = true;
 				}
 			} else { // While the player is in the air, grand a small amount of influence
-				let influenceVelocity = 0.01;
+				var influenceVelocity = 0.01;
 				// Moving forward
 				if (this.input.down('up_arrow') || this.input.down('w')) {
-					let vx2 = game.player.position.x - game.camera.position.x;
-					let vz2 = game.player.position.z - game.camera.position.z;
-					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					var vx2 = game.player.position.x - game.camera.position.x;
+					var vz2 = game.player.position.z - game.camera.position.z;
+					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
-						let v = this.player.getLinearVelocity();
-						let vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
-						let vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						var v = this.player.getLinearVelocity();
+						var vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
+						var vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
 
-						//let vel = Math.sqrt(vx * vx + vz * vz);
+						//var vel = Math.sqrt(vx * vx + vz * vz);
 						//if(vel > this.player.maxVelocity) { // Limit velocity
 						//	vx = vx2 / dt * this.player.maxVelocity
 						//	vz = vz2 / dt * this.player.maxVelocity
@@ -407,15 +476,15 @@ class Game {
 				}
 				// Moving backward
 				if (this.input.down('down_arrow') || this.input.down('s')) {
-					let vx2 = game.player.position.x - game.camera.position.x;
-					let vz2 = game.player.position.z - game.camera.position.z;
-					let dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
+					var vx2 = game.player.position.x - game.camera.position.x;
+					var vz2 = game.player.position.z - game.camera.position.z;
+					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
-						let v = this.player.getLinearVelocity();
-						let vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
-						let vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						var v = this.player.getLinearVelocity();
+						var vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
+						var vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
 
-						//let vel = Math.sqrt(vx * vx + vz * vz);
+						//var vel = Math.sqrt(vx * vx + vz * vz);
 						//if(vel > this.player.maxVelocity) { // Limit velocity
 						//	vx = -vx2 / dt * this.player.maxVelocity
 						//	vz = -vz2 / dt * this.player.maxVelocity
@@ -439,7 +508,7 @@ class Game {
 		}
 		// Update the server
 		if (this.currentFrameTime - this.lastServerUpdateTime >= 50) {
-			let p = this.player.position,
+			var p = this.player.position,
 				r = this.player.rotation,
 				lv = this.player.getLinearVelocity(),
 				av = this.player.getAngularVelocity();
@@ -456,19 +525,19 @@ class Game {
 
 	// Update a player's position, rotation, scale, and velocities
 	updatePlayerState(state) {
-		let name = state.shift();
+		var name = state.shift();
 		if (typeof name != 'string' || state.length != 15) return;
 		if (this.player != null && name == this.player_name) return; // Ignore self
 
-		for (let item of state) { // If anything is not a number, ignore the message
+		for (var item of state) { // If anything is not a number, ignore the message
 			if (typeof item != 'number') return;
 		}
 
-		let p = this.players[name];
-		let l = state[12],
+		var p = this.players[name];
+		var l = state[12],
 			w = state[13],
 			h = state[14];
-		let color = 0xFFFFFF;
+		var color = 0xFFFFFF;
 		if (p === undefined) { // Create online player object
 			p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {
 				l: l,
@@ -497,10 +566,10 @@ class Game {
 
 	// Set the player's rotation to the camera direction
 	updatePlayerRotation() {
-		let vx = game.player.position.x - game.camera.position.x;
-		let vz = game.player.position.z - game.camera.position.z;
-		let dt = Math.sqrt(vx * vx + vz * vz);
-		let theta = Math.atan2(vx, vz);
+		var vx = game.player.position.x - game.camera.position.x;
+		var vz = game.player.position.z - game.camera.position.z;
+		var dt = Math.sqrt(vx * vx + vz * vz);
+		var theta = Math.atan2(vx, vz);
 		if (theta < 0) theta += 2 * Math.PI;
 		this.player.rotation.x = 0; // Keep player upright
 		this.player.rotation.y = theta; // Facing against the camera
@@ -534,77 +603,20 @@ class Game {
 		this._spawn = position;
 	}
 
-	// Connect to the server, returns boolean success
-	connect(player_name, server_name) {
-		if (this.player_name != null) return false;
-		if (this.server_name != null) return false;
-		if (this.socket != null) return false;
-		this.player_name = player_name;
-		this.server_name = server_name;
-
-		this.socket = io();
-		this.socket.emit('initialize', player_name, server_name);
-		//this.socket.emit('list');
-		this.addChatMessage('', 'Type "\\help" for help')
-
-		this.socket.on('map', function(name, players, map) {
-			this.player_name = name;
-			this.loadMap(map);
-			for (let playerState of players) {
-				this.updatePlayerState(playerState);
-			}
-		}.bind(this)); // Make that this, this this
-
-		this.socket.on('update_player_state', function(state) {
-			this.updatePlayerState(state);
-		}.bind(this));
-
-		this.socket.on('remove_player', function(name) {
-			if (typeof name != 'string') return;
-			if (this.players[name] !== undefined) {
-				console.log(`Removing "${name}"`)
-				this.remove(this.players[name]);
-				delete this.players[name]
-			}
-		});
-
-		this.socket.on('chat', function(name, msg) {
-			let color = '#FFFFFF';
-			if (name != '') color = this.strColor(name);
-			this.addChatMessage(name, msg, color);
-		}.bind(this));
-
-		this.socket.on('list', function(names) {
-			names.sort();
-			let html = 'Users online (server="' + this.server_name + '"):';
-			for (let name of names) {
-				let color = this.strColor(name);
-				html += '<br><span style="color: ' + color + '">' + '•</span> <span style="color: #FFF76B">' + name + '</span>';
-			}
-			this.addChatMessage('', html, '#FFFFFF');
-		}.bind(this));
-
-		this.socket.on('rooms', function(rooms) {
-			let html = 'Active servers:';
-			for (let i in rooms) {
-				let room = rooms[i][0],
-					unit = rooms[i][1].toString();
-				unit += (unit == '1' ? ' player' : ' players');
-				html += '<br>• "<span style="color: #FFF76B">' + room + '</span>": <span style="color: #8DDBFF">' + unit + '</span>';
-			}
-			this.addChatMessage('', html, '#FFFFFF');
-		}.bind(this));
-		return true;
+	// Get the hash of a string, used for the server seed
+	hashString(str) {
+		str = str.trim() + ' ';
+		var hash = 0;
+		for (var i = 0; i < str.length; i++) {
+			hash = str.charCodeAt(i) + ((hash << 5) - hash);
+		}
+		return hash;
 	}
 
 	// Given a string, compute a corresponding color
 	strColor(str) {
-		str = str.trim() + ' ';
-		let hash = 0;
-		for (let i = 0; i < str.length; i++) {
-			hash = str.charCodeAt(i) + ((hash << 5) - hash);
-		}
-		let c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+		var hash = this.hashString(str);
+		var c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
 		return '#' + ('00000'.substring(0, 6 - c.length) + c);
 	}
 
@@ -617,21 +629,21 @@ class Game {
 		if (hex.length != 6) {
 			throw new Error('Invalid HEX color.');
 		}
-		let r = parseInt(hex.slice(0, 2), 16),
+		var r = parseInt(hex.slice(0, 2), 16),
 			g = parseInt(hex.slice(2, 4), 16),
 			b = parseInt(hex.slice(4, 6), 16);
 		return (r * 0.299 + g * 0.587 + b * 0.114) > 186 ? '#000000' : '#FFFFFF';
 	}
 
 	addChatMessage(name, msg, color) {
-		let html = '';
+		var html = '';
 		if (name == '') {
 			html = '<tr><td id="chatserver" style="color: ' + color + '">' + msg + '</td></tr>';
 		} else {
-			let bw = this.strBWColor(color);
+			var bw = this.strBWColor(color);
 			html = '<tr><td><span id="chatname" style="color: ' + bw + '; background-color: ' + color + '">' + name + '</span><span id="chatcontents">' + msg + '</span></td></tr>';
 		}
-		let chatfeed = document.getElementById('chatfeed');
+		var chatfeed = document.getElementById('chatfeed');
 		chatfeed.innerHTML += html;
 		if (chatfeed.children.length > 5) chatfeed.children[0].remove();
 	}
@@ -653,142 +665,142 @@ class Game {
 		} else return false;
 
 		this.respawnHeight = Infinity;
+		this.respawnHeightPadding = 500;
 
 		// Add each object one by one
-		for (let objectDefinition of map.objects) {
-			let success = this.addObjectFromDefinition(objectDefinition)
+		for (var objectDefinition of map.objects) {
+			var success = this.addObjectFromDefinition(objectDefinition)
 			if (!success) {
 				console.log('Failed to load object:');
 				console.log(objectDefinition);
 			}
 		}
-		this.respawnHeight -= 10;
+		this.respawnHeight -= this.respawnHeightPadding;
 		this.initializePlayer();
 		this.chunkManager.step();
 	}
 
 	// Given an object definition, put it into the world
 	addObjectFromDefinition(object) {
-		let type, name, position, scale, rotation, color, friction, restitution, mass, colorNum, intensity, texture, size, radius, positionVector, rotationVector, minHeight, fileType, width, height;
-		type = object[0];
+		var type = object[0];
 		if (typeof type != 'string') return false;
-		name = object[1];
+		var name = object[1];
 		if (typeof name != 'string') return false;
 		if (name.trim() == "") name = type; // Set the default to the type
 
 		switch (type) {
 			case 'cube':
 				if (object.length != 9) return false;
-				position = object[2];
+				var position = object[2];
 				if (position.length != 3) return false;
-				positionVector = new THREE.Vector3(position[0], position[1], position[2])
-				scale = object[3];
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var scale = object[3];
 				if (scale.length != 3) return false;
-				rotation = object[4];
+				var rotation = object[4];
 				if (rotation.length != 3) return false;
-				rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
-				color = object[5];
+				var rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
+				var color = object[5];
 				if (typeof color != 'string') return false;
-				friction = object[6];
+				var friction = object[6];
 				if (typeof friction != 'number') return false;
-				restitution = object[7];
+				var restitution = object[7];
 				if (typeof restitution != 'number') return false;
-				mass = object[8];
+				var mass = object[8];
 				if (typeof mass != 'number') return false;
 				this.addCube(name, positionVector, scale, rotationVector, color, friction, restitution, mass);
 
-				minHeight = positionVector.y - scale[1] / 2;
+				var minHeight = positionVector.y - scale[1] / 2;
 				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 				break;
 
 			case 'sphere':
 				if (object.length != 8) return false;
-				position = object[2];
+				var position = object[2];
 				if (position.length != 3) return false;
-				positionVector = new THREE.Vector3(position[0], position[1], position[2])
-				radius = object[3];
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var radius = object[3];
 				if (typeof radius != 'number') return false;
-				color = object[4];
+				var color = object[4];
 				if (typeof color != 'string') return false;
-				friction = object[5];
+				var friction = object[5];
 				if (typeof friction != 'number') return false;
-				restitution = object[6];
+				var restitution = object[6];
 				if (typeof restitution != 'number') return false;
-				mass = object[7];
+				var mass = object[7];
 				if (typeof mass != 'number') return false;
 				this.addSphere(name, positionVector, radius, color, friction, restitution, mass);
 
-				minHeight = positionVector.y - radius;
+				var minHeight = positionVector.y - radius;
 				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 				break;
 
 			case 'plane':
 				if (object.length != 9) return false;
-				position = object[2];
+				var position = object[2];
 				if (position.length != 3) return false;
-				positionVector = new THREE.Vector3(position[0], position[1], position[2])
-				width = object[3];
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var width = object[3];
 				if (typeof width != 'number') return false;
-				height = object[4];
+				var height = object[4];
 				if (typeof height != 'number') return false;
-				rotation = object[5];
+				var rotation = object[5];
 				console.log('Plane')
 				if (rotation.length != 3) return false;
-				rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
-				color = object[6];
+				var rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
+				var color = object[6];
 				if (typeof color != 'string') return false;
-				friction = object[7];
+				var friction = object[7];
 				if (typeof friction != 'number') return false;
-				restitution = object[8];
+				var restitution = object[8];
 				if (typeof restitution != 'number') return false;
 				this.addPlane(name, positionVector, width, height, rotationVector, color, friction, restitution);
 
-				minHeight = positionVector.y;
+				var minHeight = positionVector.y;
 				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 				break;
 
 			case 'skybox':
 				if (object.length != 5) return false;
-				texture = object[2];
+				var texture = object[2];
 				if (typeof texture != 'string') return false;
-				fileType = object[3];
+				var fileType = object[3];
 				if (fileType != 'png' && fileType != 'jpg') return false;
-				size = object[4];
+				var size = object[4];
 				if (typeof size != 'number') return false;
 				this.addSkybox(name, texture, fileType, size);
 				break;
 
 			case 'pointlight':
 				if (object.length != 6) return false;
-				position = object[2];
+				var position = object[2];
 				if (position.length != 3) return false;
-				positionVector = new THREE.Vector3(position[0], position[1], position[2])
-				color = object[3];
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var color = object[3];
 				if (typeof color != 'string') return false;
-				distance = object[4];
+				var distance = object[4];
 				if (typeof distance != 'number') return false;
-				decay = object[5];
+				var decay = object[5];
 				if (typeof decay != 'number') return false;
 				this.addPointLight(name, positionVector, color, distance, decay);
 				break;
 
 			case 'ambientlight':
 				if (object.length != 4) return false;
-				color = object[2];
+				var color = object[2];
 				if (typeof color != 'string') return false;
-				intensity = object[3];
+				var intensity = object[3];
 				if (typeof intensity != 'number') return false;
 				this.addAmbientLight(name, color, intensity);
 				break;
 
 			case 'directionallight':
 				if (object.length != 5) return false;
-				position = object[2];
+				var position = object[2];
 				if (position.length != 3) return false;
-				positionVector = new THREE.Vector3(position[0], position[1], position[2])
-				color = object[3];
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var color = object[3];
 				if (typeof color != 'string') return false;
-				intensity = object[4];
+				var intensity = object[4];
 				if (typeof intensity != 'number') return false;
 				this.addDirectionalLight(name, positionVector, color, intensity);
 				break;
@@ -817,7 +829,7 @@ class Game {
 	}
 
 	addCube(name, position, scale, rotation, color, friction, restitution, mass) {
-		let cube = new Physijs.BoxMesh(
+		var cube = new Physijs.BoxMesh(
 			new THREE.CubeGeometry(scale[0], scale[1], scale[2]),
 			Physijs.createMaterial(new THREE.MeshStandardMaterial({
 				color: new THREE.Color(color),
@@ -837,7 +849,7 @@ class Game {
 	}
 
 	addSphere(name, position, radius, color, friction, restitution, mass) {
-		let sphere = new Physijs.SphereMesh(
+		var sphere = new Physijs.SphereMesh(
 			new THREE.SphereGeometry(radius),
 			Physijs.createMaterial(new THREE.MeshStandardMaterial({
 				color: new THREE.Color(color),
@@ -858,7 +870,7 @@ class Game {
 
 	// TODO: Apply scale, rotation, ...
 	addPlayer(name, position, scale, rotation, color, friction = 0.8, restitution = 0.1, mass = 30) {
-		let playerGeometry = new THREE.Geometry();
+		var playerGeometry = new THREE.Geometry();
 		playerGeometry.vertices = [
 			new THREE.Vector3(-scale.w / 2, -scale.h / 2, 0),
 			new THREE.Vector3(-scale.w / 2, scale.h / 2, 0),
@@ -874,12 +886,12 @@ class Game {
 			new THREE.Face3(3, 2, 4),
 			new THREE.Face3(0, 3, 4)
 		];
-		let playerMaterial = new THREE.MeshBasicMaterial({
+		var playerMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(color)
 		});
 		//playerMaterial.depthTest = false;
 
-		let player = new Physijs.BoxMesh(
+		var player = new Physijs.BoxMesh(
 			playerGeometry,
 			Physijs.createMaterial(playerMaterial, friction, restitution),
 			mass
@@ -892,7 +904,7 @@ class Game {
 		player.width = scale.w;
 		player.height = scale.h;
 
-		let _color = this.strColor(name);
+		var _color = this.strColor(name);
 		player.label = new THREE.TextSprite({
 			text: name,
 			fontFamily: 'Helvetica, Arial, sans-serif',
@@ -908,7 +920,7 @@ class Game {
 		// A function for setting the scale of non-main players
 		// (i.e. not the main game.player, because it has special added functions)
 		player.setScale = (l, w, h) => {
-			let scale = {
+			var scale = {
 				l: l,
 				w: w,
 				h: h
@@ -921,7 +933,7 @@ class Game {
 	}
 
 	addPlane(name, position, width, height, rotation, color, friction, restitution) {
-		let plane = new Physijs.PlaneMesh(
+		var plane = new Physijs.PlaneMesh(
 			new THREE.PlaneGeometry(width, height),
 			Physijs.createMaterial(new THREE.MeshStandardMaterial({
 				color: new THREE.Color(color),
@@ -941,7 +953,7 @@ class Game {
 	}
 
 	addSkybox(name, texture, fileType, size) {
-		let materialArray = [],
+		var materialArray = [],
 			loader = new THREE.TextureLoader();
 		materialArray.push(new THREE.MeshBasicMaterial({
 			map: loader.load('skyboxes/' + texture + '-xpos.' + fileType)
@@ -961,11 +973,11 @@ class Game {
 		materialArray.push(new THREE.MeshBasicMaterial({
 			map: loader.load('skyboxes/' + texture + '-zneg.' + fileType)
 		}));
-		for (let i = 0; i < 6; i++) {
+		for (var i = 0; i < 6; i++) {
 			materialArray[i].side = THREE.BackSide;
 		}
-		let skyboxGeometry = new THREE.CubeGeometry(size, size, size, 1, 1, 1);
-		let skybox = new THREE.Mesh(skyboxGeometry, materialArray);
+		var skyboxGeometry = new THREE.CubeGeometry(size, size, size, 1, 1, 1);
+		var skybox = new THREE.Mesh(skyboxGeometry, materialArray);
 		skybox.meshName = name;
 		skybox.meshType = 'skybox';
 		this.objects.push(skybox);
@@ -974,7 +986,7 @@ class Game {
 	}
 
 	addPointLight(name, position, color, distance, decay) {
-		let light = new THREE.PointLight(new THREE.Color(color), distance, decay);
+		var light = new THREE.PointLight(new THREE.Color(color), distance, decay);
 		light.meshName = name;
 		light.meshType = 'pointlight';
 		light.position.set(position.x, position.y, position.z);
@@ -984,7 +996,7 @@ class Game {
 	}
 
 	addAmbientLight(name, color, intensity) {
-		let light = new THREE.AmbientLight(new THREE.Color(color), intensity);
+		var light = new THREE.AmbientLight(new THREE.Color(color), intensity);
 		light.meshName = name;
 		light.meshType = 'ambientlight';
 		this.objects.push(light);
@@ -993,7 +1005,7 @@ class Game {
 	}
 
 	addDirectionalLight(name, position, color, intensity) {
-		let light = new THREE.DirectionalLight(0xFFFFFF, intensity);
+		var light = new THREE.DirectionalLight(0xFFFFFF, intensity);
 		light.meshName = name;
 		light.meshType = 'directionallight';
 		//light.castShadow = true;
