@@ -25,6 +25,9 @@
 				top: 0;
 				z-index: -1;
 			}
+			#overlay {
+				background-color: #000;
+			}
 			#chatbar {
 				position: fixed;
 				left: 10px;
@@ -61,16 +64,16 @@
 				margin-right: 10px;
 			}
 			#chatname {
-			color: #FFF;
-			word-break: break-all;
+				color: #FFF;
+				word-break: break-all;
 			}
 			#chatcontents {
-			text-shadow: 0px 0px 8px #000;
-			word-break: break-all;
+				text-shadow: 0px 0px 8px #000;
+				word-break: break-all;
 			}
 			#chatserver {
-			color: #FFF;
-			background-color: rgba(30, 30, 30, 0.6);
+				color: #FFF;
+				background-color: rgba(30, 30, 30, 0.6);
 			}
 		</style>
 		<script type='text/javascript' src='lib/three.js'></script>
@@ -87,7 +90,7 @@
 			<table id='chatfeed'></table>
 			<input id='chat' type='text' placeholder='Send a message' maxlength="256" />
 		</div>
-		<div id='viewport'></div>
+		<div id='viewport'><div id="overlay"></div></div>
 	</body>
 	<script type='text/javascript' src='random.js'></script>
 	<script type='text/javascript' src='chunk_manager.js'></script>
