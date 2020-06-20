@@ -73,7 +73,7 @@
 		</style>
 		<script type='text/javascript' src='lib/three.js'></script>
 		<script type='text/javascript' src='lib/physi.js'></script>
-		<script type='text/javascript' src='lib/stinput.js'></script>
+		<!--<script type='text/javascript' src='lib/stinput.js'></script>-->
 		<script type='text/javascript' src='lib/camera_orbit.js'></script>
 		<script type='text/javascript' src='lib/text_texture.js'></script>
 		<script type='text/javascript' src='lib/text_sprite.js'></script>
@@ -89,6 +89,7 @@
 	</body>
 	<script type='text/javascript' src='random.js'></script>
 	<script type='text/javascript' src='chunk_manager.js'></script>
+	<script type='text/javascript' src='input.js'></script>
 	<script type='text/javascript' src='game.js'></script>
 	<script type='text/javascript'>
 		'use strict';
@@ -109,8 +110,7 @@
 		// Create a new instance of the game
 		const game = new Game();
 		game.connect(player_name, server_name);
-		
-		
+
 		// Handle the chat bar
 		window.onkeypress = function(e) {
 			let id = document.activeElement.id;

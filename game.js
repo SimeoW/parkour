@@ -50,11 +50,11 @@ class Game {
 		this.chunkManager = null;
 
 		// Used for standardized user input
-		this.input = new StInput(window);
+		this.input = new Input(window);
 
 		// Used to orbit the camera around the player
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
-		this.controls.smoothing = 1;
+		this.controls.smoothing = 0;
 
 		this.paused = false;
 
@@ -290,10 +290,10 @@ class Game {
 			h: this.playerScale.h
 		}, zeroVector, color);
 		this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
-		this.player.velocity = 1;
-		this.player.maxVelocity = 70;
+		this.player.velocity = 4;
+		this.player.maxVelocity = 50;
 		this.player.jumping = false;
-		this.player.jumpVelocity = 100;
+		this.player.jumpVelocity = 50;
 		this.player.flying = true;
 		//this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 		//	game.player.jumping = false;
@@ -317,9 +317,9 @@ class Game {
 		this.updateControls();
 		this.input.endFrame();
 		if (!this.paused) {
-			this.playerMovement();
 			if(this.chunkManager != null) this.chunkManager.step();
 			this.scene.simulate();
+			this.playerMovement();
 		} else {
 			this.draw();
 		}
@@ -337,32 +337,33 @@ class Game {
 
 	// Handle the camera orbit
 	updateControls() {
-		var rotateCamera = this.input.mouseDown(this.input.MouseButtons.left);
+		var rotateCamera = this.input.isLeftDown;
 		var moveCamera = false;
-		var mouseDelta = this.input.mouseDelta;
-		var zoom = this.input.mouseWheel;
-		mouseDelta.x /= 3;
-		mouseDelta.y /= 3;
+		var mouseDeltaX = this.input.mouseDeltaX;
+		var mouseDeltaY = this.input.mouseDeltaY;
+		var zoom = this.input.scrollY;
+		mouseDeltaX /= 3;
+		mouseDeltaY /= 3;
 		if (document.activeElement.id != 'chat') {
-			if (this.input.down('subtract') || this.input.down('page_down')) zoom += 10;
-			else if (this.input.down('add') || this.input.down('page_up')) zoom -= 10;
+			if (this.input.isKeyDown['-'] || this.input.isKeyDown['pagedown']) zoom += 10;
+			else if (this.input.isKeyDown['+'] || this.input.isKeyDown['pageup']) zoom -= 10;
 
-			if (this.input.down('left_arrow') || this.input.down('a')) {
+			if (this.input.isKeyDown['arrowleft'] || this.input.isKeyDown['a']) {
 				rotateCamera = true;
-				mouseDelta.x -= 3;
+				mouseDeltaX -= 3;
 			}
-			if (this.input.down('right_arrow') || this.input.down('d')) {
+			if (this.input.isKeyDown['arrowright'] || this.input.isKeyDown['d']) {
 				rotateCamera = true;
-				mouseDelta.x += 3;
+				mouseDeltaX += 3;
 			}
 		}
 
 		var controllerInput = {
 			deltaTime: this.deltaTime, // time passed, in seconds, since last update call
-			rotateHorizontally: rotateCamera ? -mouseDelta.x : 0, // rotation around y axis
-			rotateVertically: rotateCamera ? -mouseDelta.y : 0, // rotate vertically around x / z axis
-			moveOffsetVertically: 0, // (moveCamera ? -mouseDelta.y : 0) * 10, // move the target offset (affect lookat AND camera position), along camera's Y axis.
-			moveOffsetHorizontally: 0, // (moveCamera ? mouseDelta.x : 0) * 10, // move the target offset left / right, relative to camera's world direction.
+			rotateHorizontally: rotateCamera ? -mouseDeltaX : 0, // rotation around y axis
+			rotateVertically: rotateCamera ? -mouseDeltaY : 0, // rotate vertically around x / z axis
+			moveOffsetVertically: 0, // (moveCamera ? -mouseDeltaY : 0) * 10, // move the target offset (affect lookat AND camera position), along camera's Y axis.
+			moveOffsetHorizontally: 0, // (moveCamera ? mouseDeltaX : 0) * 10, // move the target offset left / right, relative to camera's world direction.
 			zoom: zoom * 10, // zoom in or out
 		}
 		this.controls.update(controllerInput);
@@ -391,9 +392,9 @@ class Game {
 
 				// Sprinting
 				var maxVelocity = this.player.maxVelocity;
-				if (this.input.down('shift')) maxVelocity *= 1.25;
+				if (this.input.isKeyDown['shift']) maxVelocity *= 1.25;
 				// Moving forward
-				if (this.input.down('up_arrow') || this.input.down('w')) {
+				if (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']) {
 					this.updatePlayerRotation();
 
 					// 2D angle
@@ -404,8 +405,8 @@ class Game {
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
 						//console.log(v.z)
-						var vx = v.x + this.player.velocity * vx2 / dt * this.deltaTime * 100;
-						var vz = v.z + this.player.velocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x + this.player.velocity * vx2 / dt;
+						var vz = v.z + this.player.velocity * vz2 / dt;
 
 						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
@@ -419,7 +420,7 @@ class Game {
 					}
 				}
 				// Moving backward
-				if (this.input.down('down_arrow') || this.input.down('s')) {
+				if (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']) {
 					this.updatePlayerRotation();
 
 					// 2D angle
@@ -430,8 +431,8 @@ class Game {
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
 						//console.log(v.z)
-						var vx = v.x - this.player.velocity * vx2 / dt * this.deltaTime * 100;
-						var vz = v.z - this.player.velocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x - this.player.velocity * vx2 / dt;
+						var vz = v.z - this.player.velocity * vz2 / dt;
 
 						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
@@ -445,24 +446,24 @@ class Game {
 					}
 				}
 				// Jumping
-				if (this.input.down('space')) {
+				if (this.input.isKeyDown[' ']) {
 					var v = this.player.getLinearVelocity();
 					if (v.y < 0) v.y = 0;
 					//this.player.applyCentralImpulse(new THREE.Vector3(0, this.player.jumpVelocity, 0))
-					this.player.setLinearVelocity(new THREE.Vector3(v.x, this.player.jumpVelocity * this.deltaTime * this.deltaTime * 1000, v.z));
+					this.player.setLinearVelocity(new THREE.Vector3(v.x, this.player.jumpVelocity, v.z));
 					this.player.jumping = true;
 				}
 			} else { // While the player is in the air, grand a small amount of influence
 				var influenceVelocity = 0.01;
 				// Moving forward
-				if (this.input.down('up_arrow') || this.input.down('w')) {
+				if (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']) {
 					var vx2 = game.player.position.x - game.camera.position.x;
 					var vz2 = game.player.position.z - game.camera.position.z;
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
-						var vx = v.x + influenceVelocity * vx2 / dt * this.deltaTime * 100;
-						var vz = v.z + influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x + influenceVelocity * vx2 / dt;
+						var vz = v.z + influenceVelocity * vz2 / dt;
 
 						//var vel = Math.sqrt(vx * vx + vz * vz);
 						//if(vel > this.player.maxVelocity) { // Limit velocity
@@ -475,14 +476,14 @@ class Game {
 					}
 				}
 				// Moving backward
-				if (this.input.down('down_arrow') || this.input.down('s')) {
+				if (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']) {
 					var vx2 = game.player.position.x - game.camera.position.x;
 					var vz2 = game.player.position.z - game.camera.position.z;
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
-						var vx = v.x - influenceVelocity * vx2 / dt * this.deltaTime * 100;
-						var vz = v.z - influenceVelocity * vz2 / dt * this.deltaTime * 100;
+						var vx = v.x - influenceVelocity * vx2 / dt;
+						var vz = v.z - influenceVelocity * vz2 / dt;
 
 						//var vel = Math.sqrt(vx * vx + vz * vz);
 						//if(vel > this.player.maxVelocity) { // Limit velocity
@@ -820,10 +821,12 @@ class Game {
 	}
 
 	remove(object) {
+		let index = this.objects.indexOf(object);
+		if(index > -1) this.objects.splice(index, 1);
 		if (object == null || object === undefined) return false;
-		//if (object.label != null || object.label !== undefined) {
-		//	this.scene.remove(object.label)
-		//}
+		if (object.label != null || object.label !== undefined) {
+			this.scene.remove(object.label)
+		}
 		this.scene.remove(object);
 		return true;
 	}

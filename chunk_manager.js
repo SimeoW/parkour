@@ -82,6 +82,8 @@ class ChunkManager {
 		// Initialize the chunk
 		this.chunkObjects[chunk] = [];
 
+		var group = new THREE.Group();
+
 		var _coords = chunk.split(','), coords = new THREE.Vector3(parseFloat(_coords[0]), parseFloat(_coords[1]), parseFloat(_coords[2]));
 		var grid = 2;
 		for(var z = -0.5 + 1/grid/2; z < 0.5; z += 1/grid) {
@@ -111,7 +113,7 @@ class ChunkManager {
 					var mass = 0;
 					var object = this.game.addSphere('generated', position, radius, color, friction, restitution, mass);
 				}
-				this.chunkObjects[chunk].push(object);
+				if(object !== undefined) this.chunkObjects[chunk].push(object);
 			}
 		}
 
@@ -124,6 +126,7 @@ class ChunkManager {
 		// Remove all the objects in it, before deleting the array
 		var objects = this.chunkObjects[chunk] || [];
 		for(var object of objects) {
+			//console.log(object)
 			this.game.remove(object);
 		}
 		delete this.chunkObjects[chunk]
@@ -143,6 +146,7 @@ class ChunkManager {
 		}
 	}
 
+	// If the queue has an item, begin the recursive processor to ensure it is taken care of
 	activateChunkQueue() {
 		if(this.chunkQueue.length == 0) {
 			this.chunkQueueActive = false;
