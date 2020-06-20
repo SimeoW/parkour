@@ -17,7 +17,7 @@ class Game {
 		this.socket = null;
 
 		this.gravity = zeroVector;
-
+		this.sky = this.addSkybox("skybox", "", "nebula", "png", 10000);
 		this.objects = []; // Three.js objects
 
 		this.renderer = new THREE.WebGLRenderer({
@@ -45,7 +45,7 @@ class Game {
 			h: 10
 		};
 
-		this.chunkSize = 128;
+		this.chunkSize = 1024;
 		this.chunkRadius = 3;
 		this.chunkManager = null;
 
@@ -291,14 +291,14 @@ class Game {
 		}, zeroVector, color);
 		this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
 		this.player.velocity = 4;
-		this.player.maxVelocity = 50;
+		this.player.maxVelocity = 200;
 		this.player.jumping = false;
 		this.player.jumpVelocity = 50;
 		this.player.flying = true;
 		//this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 		//	game.player.jumping = false;
 		//});
-		this.controls.position = new THREE.Vector3(0, 150, -200);
+		this.controls.position = new THREE.Vector3(0, 60, -80);
 		this.playerRespawnTimeout = null;
 	}
 
@@ -498,6 +498,9 @@ class Game {
 				}
 			}
 		}
+
+
+		this.sky.position.set(this.player.position.x, this.player.position.y, this.player.position.z)
 
 		// Every second, check if the player has not moved, if no, then grant access to a free jump
 		if (this.currentFrameTime - this.lastPositionCheckTime >= 1000) {
@@ -957,6 +960,7 @@ class Game {
 	}
 
 	addSkybox(name, texture, fileType, size) {
+		if(this.sky != null) this.remove(this.sky);
 		var materialArray = [],
 			loader = new THREE.TextureLoader();
 		materialArray.push(new THREE.MeshBasicMaterial({
@@ -984,7 +988,7 @@ class Game {
 		var skybox = new THREE.Mesh(skyboxGeometry, materialArray);
 		skybox.meshName = name;
 		skybox.meshType = 'skybox';
-		this.objects.push(skybox);
+		this.sky = skybox;
 		this.add(skybox);
 		return skybox;
 	}

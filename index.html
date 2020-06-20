@@ -2,63 +2,63 @@
 <html>
 	<head>
 		<meta charset='utf-8'/>
-		<meta name='viewport' content='initial-scale=1, maximum-scale=1, minimum-scale=1, width=device-width, user-scalable=no'>
+		<meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1, maximum-scale=1">
 		<link rel="shortcut icon" type="image/png" href="/favicon.png"/>
 		<title>VWORLD</title>
 		<style>
 			html {
-			height: 100%;
-			margin: 0;
-			padding: 0px;
-			width: 100%;
+				height: 100%;
+				margin: 0;
+				padding: 0px;
+				width: 100%;
 			}
 			body {
-			background-color: #101010
-			overscroll-behavior-x: none;
-			overscroll-behavior-y: none;
+				background-color: #101010
+				overscroll-behavior-x: none;
+				overscroll-behavior-y: none;
 			}
 			canvas {
-			width: 100%;
-			height: 100%;
-			position: fixed;
-			left: 0;
-			top: 0;
-			z-index: -1;
+				width: 100%;
+				height: 100%;
+				position: fixed;
+				left: 0;
+				top: 0;
+				z-index: -1;
 			}
 			#chatbar {
-			position: fixed;
-			left: 10px;
-			bottom: 10px;
-			user-select: none;
+				position: fixed;
+				left: 10px;
+				bottom: 10px;
+				user-select: none;
 			}
 			#chat {
-			font-family: monospace;
-			min-width: 100%;
-			border: none;
-			outline: none;
-			border-radius: 100px;
-			padding: 5px;
-			margin-top: 9px;
-			text-align: center;
-			color: #FFF;
-			background-color: rgba(30, 30, 30, 0.7);
+				font-family: monospace;
+				min-width: 100%;
+				border: none;
+				outline: none;
+				border-radius: 100px;
+				padding: 5px;
+				margin-top: 9px;
+				text-align: center;
+				color: #FFF;
+				background-color: rgba(30, 30, 30, 0.7);
 			}
 			#chat::placeholder {
-			color: #FFF;
-			opacity: 0.7;
+				color: #FFF;
+				opacity: 0.7;
 			}
 			#chatfeed {
-			font-family: monospace;
-			padding-left: 0px;
-			color: #FFF;
+				font-family: monospace;
+				padding-left: 0px;
+				color: #FFF;
 			}
 			#chatfeed td {
-			max-width: 400px;
+				max-width: 400px;
 			}
 			#chatname, #chatserver {
-			padding: 1px 10px;
-			border-radius: 8px;
-			margin-right: 10px;
+				padding: 1px 10px;
+				border-radius: 8px;
+				margin-right: 10px;
 			}
 			#chatname {
 			color: #FFF;

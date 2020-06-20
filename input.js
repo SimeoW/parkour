@@ -141,22 +141,27 @@ class Input {
 		this.scrollY = e.deltaY;
 	}
 
-	multiTouchStart(e) {
-		var pos = this.getPosition(e.touches[1]);
-		this.mouseStartX2 = pos[0];
-		this.mouseStartY2 = pos[1];
-
-		var dx = this.mouseX - pos[0];
-		var dy = this.mouseY - pos[1];
-		this.startScrollDist = Math.sqrt(dx * dx + dy * dy);
-	}
-
 	touchStart(e) {
 		var pos = this.getPosition(e);
 		this.mouseStartX = pos[0];
 		this.mouseStartY = pos[1];
 		this.isLeftDown = true;
 		if(e.touches.length > 1) return multiTouchStart(e);
+	}
+
+	multiTouchStart(e) {
+		var pos = this.getPosition(e.touches[1]);
+		this.mouseStartX2 = pos[0];
+		this.mouseStartY2 = pos[1];
+
+		var dx = this.mouseX - e.touches[0].pageX;
+		var dy = this.mouseY - e.touches[0].pageY;
+		var dx2 = this.mouseX - e.touches[1].pageX;
+		var dy2 = this.mouseY - e.touches[1].pageY;
+		var dt = Math.sqrt(dx * dx + dy * dy);
+		var dt2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+		this.startScrollDist = Math.min(dt, dt2);
+		this.scrollY = 10 * (this.startScrollDist - this.scrollDist);
 	}
 
 	touchEnd(e) {
@@ -171,9 +176,14 @@ class Input {
 		this.mouseX = pos[0];
 		this.mouseY = pos[1];
 		if(e.touches.length > 1){
-			let dx = this.mouseX - e.touches[0].pageX, dy = this.mouseY - e.touches[0].pageY;
-			this.scrollDist = Math.sqrt(dx * dx + dy * dy);
-			this.scrollY = this.scrollDist - this.startScrollDist;
+			var dx = this.mouseX - e.touches[0].pageX;
+			var dy = this.mouseY - e.touches[0].pageY;
+			var dx2 = this.mouseX - e.touches[1].pageX;
+			var dy2 = this.mouseY - e.touches[1].pageY;
+			var dt = Math.sqrt(dx * dx + dy * dy);
+			var dt2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+			this.scrollDist = Math.min(dt, dt2);
+			this.scrollY = 10 * (this.startScrollDist - this.scrollDist);
 			// TODO: Attach to a zoom effect
 		}
 	}

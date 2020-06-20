@@ -76,22 +76,16 @@ class ChunkManager {
 	// Create a new chunk, where a chunk is in "x,y,z" format
 	generateChunk(chunk) {
 		var random = new Random(this.game.serverSeed + this.game.hashString(chunk))
-		
 		// Sanity checking, if the chunk exists, just remove it
 		if(this.chunkObjects[chunk] !== undefined && this.chunkObjects[chunk].length > 0) this.removeChunks(chunk);
 		// Initialize the chunk
 		this.chunkObjects[chunk] = [];
-
-		var group = new THREE.Group();
-
 		var _coords = chunk.split(','), coords = new THREE.Vector3(parseFloat(_coords[0]), parseFloat(_coords[1]), parseFloat(_coords[2]));
-		var grid = 2;
+		var grid = 8;
 		for(var z = -0.5 + 1/grid/2; z < 0.5; z += 1/grid) {
 			for(var x = -0.5 + 1/grid/2; x < 0.5; x += 1/grid) {
 				var px = coords.x + x, pz = coords.z + z;
 				var py = coords.y - this.noise(px * 4, 100, pz * 4, 6);
-
-				//if( > 0.75) continue;
 				var threshhold = this.simplex.noise(px / 10, pz / 10);
 				if(threshhold > 0.3) {
 					var p = this.chunkToPosition(px, py, pz);
@@ -124,17 +118,26 @@ class ChunkManager {
 		// Our job is already done
 		if(this.chunkObjects[chunk] === undefined) return;
 		// Remove all the objects in it, before deleting the array
-		var objects = this.chunkObjects[chunk] || [];
+		var objects = this.chunkObjects[chunk] || [], failedToDelete = [];
 		for(var object of objects) {
 			//console.log(object)
-			this.game.remove(object);
+			if(!this.game.remove(object)) {
+				failedToDelete.push(object);
+			}
 		}
+		console.log(failedToDelete)
 		delete this.chunkObjects[chunk]
 	}
 
 	// Generate an array of chunks, where a chunk is in "x,y,z" format
 	generateChunks(chunks) {
 		for(var chunk of chunks) {
+			for(var i in this.chunkQueue) {
+				// Remove old occurances of the same chunk
+				if(this.chunkQueue[i].arg == chunk) {
+					this.chunkQueue.splice(i, 1);
+				}
+			}
 			this.chunkQueue.push({f: this.generateChunk, arg: chunk});
 		}
 	}
@@ -153,7 +156,11 @@ class ChunkManager {
 			return;
 		}
 		this.chunkQueueActive = true;
-		let job = this.chunkQueue.shift();
+		var job = this.chunkQueue.shift();
+		var ignore = (job.f == this.generateChunk && !this.activeChunks.includes(job.arg))
+			|| (job.f == this.removeChunk && this.activeChunks.includes(job.arg));
+		if(ignore) return this.activateChunkQueue();
+
 		job.f.bind(this)(job.arg);
 		setTimeout(this.activateChunkQueue.bind(this), 50);
 	}
