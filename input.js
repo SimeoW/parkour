@@ -44,12 +44,12 @@ class Input {
 	}
 
 	get mouseDeltaX() {
-		if(this.prevMouseX == null) return 0;
+		if(this.prevMouseX == null || (this.prevMouseX == 0 && this.prevMouseY == 0)) return 0;
 		return this.mouseX - this.prevMouseX;
 	}
 
 	get mouseDeltaY() {
-		if(this.prevMouseY == null) return 0;
+		if(this.prevMouseY == null || (this.prevMouseX == 0 && this.prevMouseY == 0)) return 0;
 		return this.mouseY - this.prevMouseY;
 	}
 
@@ -61,6 +61,10 @@ class Input {
 		this.prevIsMiddleDown = this.isMiddleDown;
 		this.prevIsRightDown = this.isRightDown;
 
+		//if(this.prevMouseX == 0 && this.prevMouseY == 0) {
+			//this.mouseX = 0;
+			//this.mouseY = 0;
+		//}
 		this.prevMouseX = this.mouseX;
 		this.prevMouseY = this.mouseY;
 
@@ -145,6 +149,8 @@ class Input {
 		var pos = this.getPosition(e);
 		this.mouseStartX = pos[0];
 		this.mouseStartY = pos[1];
+		//this.mouseX = 0;
+		//this.mouseY = 0;
 		this.isLeftDown = true;
 		if(e.touches.length > 1) return multiTouchStart(e);
 	}
@@ -154,20 +160,26 @@ class Input {
 		this.mouseStartX2 = pos[0];
 		this.mouseStartY2 = pos[1];
 
-		var dx = this.mouseX - e.touches[0].pageX;
-		var dy = this.mouseY - e.touches[0].pageY;
-		var dx2 = this.mouseX - e.touches[1].pageX;
-		var dy2 = this.mouseY - e.touches[1].pageY;
-		var dt = Math.sqrt(dx * dx + dy * dy);
-		var dt2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-		this.startScrollDist = Math.min(dt, dt2);
-		this.scrollY = 10 * (this.startScrollDist - this.scrollDist);
+		if(this.scrollDist == 0) {
+			this.scrollY = 0;
+		} else {
+			var dx = this.mouseX - e.touches[0].pageX;
+			var dy = this.mouseY - e.touches[0].pageY;
+			var dx2 = this.mouseX - e.touches[1].pageX;
+			var dy2 = this.mouseY - e.touches[1].pageY;
+			var dt = Math.sqrt(dx * dx + dy * dy);
+			var dt2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+			this.startScrollDist = Math.min(dt, dt2);
+			this.scrollY = 10 * (this.startScrollDist - this.scrollDist);
+		}
 	}
 
 	touchEnd(e) {
-		//var pos = this.getPosition(e);
 		this.mouseEndX = this.mouseX;
 		this.mouseEndY = this.mouseY;
+		this.mouseX = 0;
+		this.mouseY = 0;
+		this.scrollDist = 0;
 		this.isLeftDown = false;
 	}
 
@@ -184,7 +196,6 @@ class Input {
 			var dt2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
 			this.scrollDist = Math.min(dt, dt2);
 			this.scrollY = 10 * (this.startScrollDist - this.scrollDist);
-			// TODO: Attach to a zoom effect
 		}
 	}
 

@@ -350,6 +350,8 @@ class Game {
 		var moveCamera = false;
 		var mouseDeltaX = this.input.mouseDeltaX;
 		var mouseDeltaY = this.input.mouseDeltaY;
+		console.log(this.input.mouseX, this.input.prevMouseX, this.input.mouseY, this.input.prevMouseY);
+		console.log(this.input.mouseDeltaX, this.input.mouseDeltaY);
 		//console.log(mouseDeltaX)
 		var zoom = this.input.scrollY;
 		mouseDeltaX /= 3;
