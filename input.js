@@ -66,6 +66,7 @@ class Input {
 
 		this.scrollX = 0;
 		this.scrollY = 0;
+		this.startScrollDist = this.scrollDist;
 	}
 
 	// Get the position from an event, with many fallbacks
@@ -145,7 +146,8 @@ class Input {
 		this.mouseStartX2 = pos[0];
 		this.mouseStartY2 = pos[1];
 
-		let dx = this.mouseX - e.touches[0].pageX, dy = this.mouseY - e.touches[0].pageY;
+		var dx = this.mouseX - pos[0];
+		var dy = this.mouseY - pos[1];
 		this.startScrollDist = Math.sqrt(dx * dx + dy * dy);
 	}
 
