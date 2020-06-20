@@ -81,7 +81,7 @@ class ChunkManager {
 		// Initialize the chunk
 		this.chunkObjects[chunk] = [];
 		var _coords = chunk.split(','), coords = new THREE.Vector3(parseFloat(_coords[0]), parseFloat(_coords[1]), parseFloat(_coords[2]));
-		var grid = 8;
+		var grid = 6;
 		for(var z = -0.5 + 1/grid/2; z < 0.5; z += 1/grid) {
 			for(var x = -0.5 + 1/grid/2; x < 0.5; x += 1/grid) {
 				var px = coords.x + x, pz = coords.z + z;
