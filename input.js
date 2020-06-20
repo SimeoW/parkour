@@ -143,6 +143,7 @@ class Input {
 		this.mouseStartX = pos[0];
 		this.mouseStartY = pos[1];
 		this.isLeftDown = true;
+		game.addChatMessage('', pos[0], '#FFFFFF')
 	}
 
 	touchEnd(e) {
