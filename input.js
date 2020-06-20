@@ -21,6 +21,8 @@ class Input {
 
 		this.scrollX = 0;
 		this.scrollY = 0;
+		this.scrollDist = 0;
+		this.startScrollDist = 0;
 
 		this.isLeftDown = false;
 		this.isMiddleDown = false;
@@ -138,12 +140,21 @@ class Input {
 		this.scrollY = e.deltaY;
 	}
 
+	multiTouchStart(e) {
+		var pos = this.getPosition(e.touches[1]);
+		this.mouseStartX2 = pos[0];
+		this.mouseStartY2 = pos[1];
+
+		let dx = this.mouseX - e.touches[0].pageX, dy = this.mouseY - e.touches[0].pageY;
+		this.startScrollDist = Math.sqrt(dx * dx + dy * dy);
+	}
+
 	touchStart(e) {
 		var pos = this.getPosition(e);
 		this.mouseStartX = pos[0];
 		this.mouseStartY = pos[1];
 		this.isLeftDown = true;
-		game.addChatMessage('', pos[0], '#FFFFFF')
+		if(e.touches.length > 1) return multiTouchStart(e);
 	}
 
 	touchEnd(e) {
@@ -158,10 +169,9 @@ class Input {
 		this.mouseX = pos[0];
 		this.mouseY = pos[1];
 		if(e.touches.length > 1){
-			var x = (e.touches[0].pageX + e.touches[1].pageX) / 2;
-			var y = (e.touches[0].pageY + e.touches[1].pageY) / 2;
-			let dx = x - e.touches[0].pageX, dy = y - e.touches[0].pageY;
+			let dx = this.mouseX - e.touches[0].pageX, dy = this.mouseY - e.touches[0].pageY;
 			this.scrollDist = Math.sqrt(dx * dx + dy * dy);
+			this.scrollY = this.scrollDist - this.startScrollDist;
 			// TODO: Attach to a zoom effect
 		}
 	}
