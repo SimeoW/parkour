@@ -51,6 +51,7 @@ class Input {
 		return this.mouseY - this.prevMouseY;
 	}
 
+	// To be called each frame
 	endFrame() {
 		this.prevIsKeyDown = Object.assign({}, this.isKeyDown);
 
@@ -67,7 +68,19 @@ class Input {
 
 	// Get the position from an event, with many fallbacks
 	getPosition(e) {
-		if(e.touches !== undefined && e.touches.length > 0) e = e.touches[0];
+		if(e.touches !== undefined) {
+			if(e.touches.length == 1) {
+				return [
+					e.touches[0].pageX,
+					e.touches[0].pageY
+				];
+			} else if(e.touches.length > 1){
+				return [
+					(e.touches[0].pageX + e.touches[1].pageX) / 2,
+					(e.touches[0].pageY + e.touches[1].pageY) / 2
+				];
+			}
+		}
 		var x = e.pageX, y = e.pageY;
 		if(x === undefined) x = e.x;
 		if(y === undefined) y = e.y;
@@ -133,9 +146,9 @@ class Input {
 	}
 
 	touchEnd(e) {
-		var pos = this.getPosition(e);
-		this.mouseEndX = pos[0];
-		this.mouseEndY = pos[1];
+		//var pos = this.getPosition(e);
+		this.mouseEndX = this.mouseX;
+		this.mouseEndY = this.mouseY;
 		this.isLeftDown = false;
 	}
 
@@ -143,6 +156,13 @@ class Input {
 		var pos = this.getPosition(e);
 		this.mouseX = pos[0];
 		this.mouseY = pos[1];
+		if(e.touches.length > 1){
+			var x = (e.touches[0].pageX + e.touches[1].pageX) / 2;
+			var y = (e.touches[0].pageY + e.touches[1].pageY) / 2;
+			let dx = x - e.touches[0].pageX, dy = y - e.touches[0].pageY;
+			this.scrollDist = Math.sqrt(dx * dx + dy * dy);
+			// TODO: Attach to a zoom effect
+		}
 	}
 
 	contextMenu(e) {
