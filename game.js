@@ -61,7 +61,7 @@ class Game {
 		this.input = new Input(window);
 		// Used to orbit the camera around the player
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
-		this.controls.smoothing = 0;
+		this.controls.smoothing = 3;
 		// The skybox in the world
 		this.sky = this.addSkybox('', 'nebula', 'png', 10000);
 		// Used to pause the physics engine
@@ -261,7 +261,6 @@ class Game {
 						player;
 					if (name == this.player_name) player = this.player;
 					else player = this.players[name];
-					console.log(name, player)
 					if (player === undefined || this.player == null) {
 						this.addChatMessage('', 'Player could not be found', '#FF4949');
 						return;
@@ -350,9 +349,6 @@ class Game {
 		var moveCamera = false;
 		var mouseDeltaX = this.input.mouseDeltaX;
 		var mouseDeltaY = this.input.mouseDeltaY;
-		console.log(this.input.mouseX, this.input.prevMouseX, this.input.mouseY, this.input.prevMouseY);
-		console.log(this.input.mouseDeltaX, this.input.mouseDeltaY);
-		//console.log(mouseDeltaX)
 		var zoom = this.input.scrollY;
 		mouseDeltaX /= 3;
 		mouseDeltaY /= 3;
@@ -395,13 +391,11 @@ class Game {
 		var x = Math.floor(this.player.position.x / this.chunkSize);
 		var y = Math.floor(this.player.position.y / this.chunkSize);
 		var z = Math.floor(this.player.position.z / this.chunkSize);
-		//console.log(x, y, z);
 		if (document.activeElement.id != 'chat') {
 			if (this.player != null && this.player._physijs.touches.length > 0) this.player.jumping = false;
 			if (this.player != null && this.player.flying) this.player.jumping = false;
 			
 			if (!this.player.jumping) {
-
 				// Sprinting
 				var maxVelocity = this.player.maxVelocity;
 				if (this.input.isKeyDown['shift']) maxVelocity *= 1.25;
@@ -416,7 +410,6 @@ class Game {
 
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
-						//console.log(v.z)
 						var vx = v.x + this.player.velocity * vx2 / dt;
 						var vz = v.z + this.player.velocity * vz2 / dt;
 
@@ -442,7 +435,6 @@ class Game {
 
 					if (dt != 0) {
 						var v = this.player.getLinearVelocity();
-						//console.log(v.z)
 						var vx = v.x - this.player.velocity * vx2 / dt;
 						var vz = v.z - this.player.velocity * vz2 / dt;
 
