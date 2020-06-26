@@ -77,8 +77,8 @@
 			}
 		</style>
 		<script type='text/javascript' src='lib/three.js'></script>
-		<script type='text/javascript' src='lib/physi.js'></script>
-		<!--<script type='text/javascript' src='lib/stinput.js'></script>-->
+		<script type='text/javascript' src='lib/cannon.js'></script>
+		<script type='text/javascript' src='lib/stats.min.js'></script>
 		<script type='text/javascript' src='lib/camera_orbit.js'></script>
 		<script type='text/javascript' src='lib/text_texture.js'></script>
 		<script type='text/javascript' src='lib/text_sprite.js'></script>
@@ -98,8 +98,8 @@
 	<script type='text/javascript' src='game.js'></script>
 	<script type='text/javascript'>
 		'use strict';
-		Physijs.scripts.worker = 'lib/physijs_worker.js';
-		Physijs.scripts.ammo='ammo.js';
+		//Physijs.scripts.worker = 'lib/physijs_worker.js';
+		//Physijs.scripts.ammo='ammo.js';
 		
 		let player_name = 'Guest', server_name = '';
 		if(localStorage.getItem('playerName') == null) {

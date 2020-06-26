@@ -36,6 +36,7 @@ class Input {
 		this.mouseEndY = 0;
 
 		this.prevIsKeyDown = {};
+		this.prevScrollDist = null;
 		this.prevIsLeftDown = false;
 		this.prevIsMiddleDown = false;
 		this.prevIsRightDown = false;

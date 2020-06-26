@@ -2,6 +2,8 @@ class ChunkManager {
 	constructor(parent) {
 		// A link to the original game object
 		this.parent = parent;
+		// How long to sleep before generating the next chunk
+		this.sleepMilliseconds = 100;
 		// A simplex random noise generator
 		this.simplex = new SimplexNoise(new Random(this.parent.serverSeed));
 		// An array of which chunks to maintain, coordinates relative to the player's chunk
@@ -97,7 +99,7 @@ class ChunkManager {
 				var px = coords.x + x, pz = coords.z + z;
 				var py = coords.y - this.noise(px * 10, 100, pz * 10, 7);
 				var threshhold = this.simplex.noise(px / 10, pz / 10);
-				if(threshhold > 0.1) {
+				if(threshhold > 0.75) {
 					var p = this.chunkToPosition(px, py, pz);
 					var position = new THREE.Vector3(p.x, p.y, p.z);
 					var scale = [this.parent.chunkSize / grid, this.parent.chunkSize / grid, this.parent.chunkSize / grid];
@@ -107,7 +109,22 @@ class ChunkManager {
 					var restitution = 0.1;
 					var mass = 0;
 					var object = this.parent.addCube('generated', position, scale, rotation, color, friction, restitution, mass);
-				} else if(threshhold < -0.1) {
+				
+				} else if(threshhold <= 0.25 && threshhold > -0.25) {
+					var p = this.chunkToPosition(px, py, pz);
+					var position = new THREE.Vector3(p.x, p.y, p.z);
+					var rotation = new THREE.Vector3(random.random() * 360, random.random() * 360, random.random() * 360);
+					var radiusTop = this.parent.chunkSize / grid / 2;
+					var radiusBottom = this.parent.chunkSize / grid / 2;
+					var height = this.parent.chunkSize / grid / 2;
+					var numSegments = 20;
+					var color = 'hsl(' + Math.floor(Math.abs(this.simplex.noise3d(px / 20, 100, pz / 20) * 360)) + ', 75%, 50%)';
+					var friction = 0.9;
+					var restitution = 0.1;
+					var mass = 0;
+					var object = this.parent.addCylinder('generated', position, radiusTop, radiusBottom, height, numSegments, rotation, color, friction, restitution, mass);
+				
+				} else if(threshhold <= -0.75) {
 					var p = this.chunkToPosition(px, py, pz);
 					var position = new THREE.Vector3(p.x, p.y, p.z);
 					var rotation = new THREE.Vector3(random.random() * 360, random.random() * 360, random.random() * 360);
@@ -192,7 +209,7 @@ class ChunkManager {
 		if(ignore) return this.processChunkQueue();
 
 		job.f.bind(this)(job.arg);
-		setTimeout(this.processChunkQueue.bind(this), 50);
+		setTimeout(this.processChunkQueue.bind(this), this.sleepMilliseconds);
 	}
 
 	// Returns the chunk containing a position

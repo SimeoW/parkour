@@ -7,21 +7,31 @@ class Game {
 		// The FPS for the game
 		this.fixedTimeStep = 1 / 60;
 		// The game's camera
-		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100000);
+		this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
 		// The perspective of the camera
 		this.fov = 20;
 		// The physics scene used to simulate the objects
-		this.scene = new Physijs.Scene({
-			fixedTimeStep: this.fixedTimeStep
-		});
+		this.world = new CANNON.World();
+		this.world.quatNormalizeSkip = 0;
+		this.world.quatNormalizeFast = false;
+		this.solver = new CANNON.GSSolver();
+		this.world.defaultContactMaterial.contactEquationStiffness = 1e9;
+		this.world.defaultContactMaterial.contactEquationRelaxation = 4;
+		this.solver.iterations = 1;
+		this.solver.tolerance = 0.1;
+		var split = true;
+		if(split) this.world.solver = new CANNON.SplitSolver(this.solver);
+		else this.world.solver = solver;
+
+		this.scene = new THREE.Scene();
+		//this.scene.fog = new THREE.Fog(0x000000, 0, 500);
+
 		// The server's name, hashed to generate the server seed
 		this.server_name = null;
 		// The player's name
 		this.player_name = null;
 		// The websocket used to communicate with the server
 		this.socket = null;
-		// The server's gravity vector, set in loadMap
-		this.gravity = zeroVector;
 		// An array used to keep track of the game objects in the world
 		this.objects = [];
 		// The three.js renderer
@@ -29,30 +39,31 @@ class Game {
 			antialias: false
 		});
 		this.renderer.setSize(window.innerWidth, window.innerHeight);
-		this.renderer.setClearColor(new THREE.Color(0x101010), 1);
+		this.renderer.setClearColor(new THREE.Color(0x101010), 1); // scene.fog.color
 		this.renderer.domElement.id = 'draw';
 
-		this.renderer.shadowMap.enabled = true;
-		this.renderer.shadowMap.type = THREE.PCFShadowMap; //BasicShadowMap;
+		//this.renderer.shadowMap.enabled = true;
+		//this.renderer.shadowMap.type = THREE.PCFShadowMap; //BasicShadowMap;
+
+		this.stats = new Stats();
+		this.stats.showPanel(0);
+		document.body.appendChild(this.stats.dom);
 
 		document.getElementById('viewport').appendChild(this.renderer.domElement);
-
-		// Keep everything synchronized by rendering after each physics update
-		this.scene.addEventListener('update', this.draw.bind(this)); // Keep the same this
 
 		this.spawn = null;
 		this.players = [];
 		this.player = null;
 		this.playerScale = {
-			l: 6,
-			w: 1,
-			h: 10
+			l: 0.56,
+			w: 0.1,
+			h: 1
 		}
 		// The padding underneath the lowest object where the player respawns
 		this.respawnHeightPadding = 10;
 
 		// How large each chunk is
-		this.chunkSize = 512;
+		this.chunkSize = 64;
 		// Radius of how many away from the player to generate
 		this.chunkRadius = 2;
 		// The chunk management system
@@ -63,7 +74,7 @@ class Game {
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
 		this.controls.smoothing = 3;
 		// The skybox in the world
-		this.sky = this.addSkybox('', 'nebula', 'png', 10000);
+		this.sky = this.addSkybox('', 'nebula', 'png', 5000);
 		// Used to pause the physics engine
 		this.paused = false;
 		// Timing variables, used to ensure that tasks are done in a specific frequency
@@ -265,7 +276,6 @@ class Game {
 						this.addChatMessage('', 'Player could not be found', '#FF4949');
 						return;
 					}
-					this.player.__dirtyPosition = true;
 					this.player.position.set(player.position.x + Math.random() * 2 - 1, player.position.y + Math.random() * 2 - 1, player.position.z + Math.random() * 2 - 1);
 					break;
 				default:
@@ -292,33 +302,28 @@ class Game {
 		// Ensure that there is a spawn
 		if (this.spawn === undefined) this.spawn = zeroVector;
 		var color = 0xFFFFFF;
-		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y, this.spawn.z), {
+		this.player = this.addPlayer(this.player_name, new THREE.Vector3(this.spawn.x, this.spawn.y + this.playerScale.h / 2, this.spawn.z), {
 			l: this.playerScale.l,
 			w: this.playerScale.w,
 			h: this.playerScale.h
 		}, zeroVector, color);
 		this.player.previousPosition = new THREE.Vector3(this.player.position.x, this.player.position.y, this.player.position.z);
-		this.player.velocity = 4;
-		this.player.maxVelocity = 200;
+		this.player.acceleration = 0.4;
+		this.player.maxVelocity = 30;
 		this.player.jumping = false;
-		this.player.jumpVelocity = 50;
+		this.player.jumpVelocity = 8;
 		this.player.flying = true;
 		//this.player.addEventListener('collision', function(other_object, relative_velocity, relative_rotation, contact_normal){
 		//	game.player.jumping = false;
 		//});
-		this.controls.position = new THREE.Vector3(0, 60, -80);
+		this.controls.position = new THREE.Vector3(0, 6, -8);
 		this.playerRespawnTimeout = null;
-	}
-
-	// Called after each physics update
-	draw() {
-		this.updateCamera();
-		this.renderer.render(this.scene, this.camera);
-		requestAnimationFrame(this.step.bind(this));
 	}
 
 	// Apply motion to the scene
 	step() {
+		requestAnimationFrame(this.step.bind(this));
+		this.stats.begin();
 		this.prevFrameTime = this.currentFrameTime;
 		this.currentFrameTime = (new Date()).getTime();
 		this.deltaTime = (this.currentFrameTime - this.prevFrameTime) / 1000;
@@ -326,11 +331,41 @@ class Game {
 		this.input.endFrame();
 		if (!this.paused) {
 			if(this.chunkManager != null) this.chunkManager.step();
-			this.scene.simulate();
+			this.world.step(this.fixedTimeStep);
+			// Update player position
+			if(this.player != null) {
+				this.player.mesh.position.copy(this.player.position);
+				this.player.mesh.quaternion.copy(this.player.quaternion);
+			}
+			// Update player positions
+			for(var name in this.players) {
+				if(this.players[name] === undefined) {
+					delete this.players[name];
+					continue;
+				}
+				if(this.players[name].mesh === undefined) continue;
+				this.players[name].mesh.position.copy(this.players[name].position);
+				this.players[name].mesh.quaternion.copy(this.players[name].quaternion);
+			}
+			// Update object positions
+			for(var i in this.objects) {
+				if(this.objects[i] === undefined) {
+					delete this.objects[i];
+					continue;
+				}
+				if(this.objects[i].mesh === undefined) continue;
+				this.objects[i].mesh.position.copy(this.objects[i].position);
+				this.objects[i].mesh.quaternion.copy(this.objects[i].quaternion);
+			}
+
 			this.playerMovement();
+			this.updateCamera();
+			this.renderer.render(this.scene, this.camera);
 		} else {
-			this.draw();
+			this.updateCamera();
+			this.renderer.render(this.scene, this.camera);
 		}
+		this.stats.end();
 	}
 
 	// Update the camera by applying a smooth transition to the next player's position
@@ -392,9 +427,10 @@ class Game {
 		var y = Math.floor(this.player.position.y / this.chunkSize);
 		var z = Math.floor(this.player.position.z / this.chunkSize);
 		if (document.activeElement.id != 'chat') {
-			if (this.player != null && this.player._physijs.touches.length > 0) this.player.jumping = false;
+			// TODO
+			//if (this.player != null && this.player._physijs.touches.length > 0) this.player.jumping = false;
 			if (this.player != null && this.player.flying) this.player.jumping = false;
-			
+
 			if (!this.player.jumping) {
 				// Sprinting
 				var maxVelocity = this.player.maxVelocity;
@@ -409,17 +445,20 @@ class Game {
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 
 					if (dt != 0) {
-						var v = this.player.getLinearVelocity();
-						var vx = v.x + this.player.velocity * vx2 / dt;
-						var vz = v.z + this.player.velocity * vz2 / dt;
+						var v = this.player.velocity;
+						var vx = v.x + this.player.acceleration * vx2 / dt;
+						var vz = v.z + this.player.acceleration * vz2 / dt;
+						/*var v = this.player.velocity;
+						var vx = v.x + this.player.acceleration * vx2 / dt;
+						var vz = v.z + this.player.acceleration * vz2 / dt;*/
 
 						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
-							vx = vx2 / dt * maxVelocity
-							vz = vz2 / dt * maxVelocity
+							vx = vx / vel * maxVelocity
+							vz = vz / vel * maxVelocity
 						}
-						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
-						this.player.setAngularVelocity(zeroVector);
+						this.player.velocity.set(vx, v.y, vz);
+						this.player.angularVelocity.set(0, 0, 0);
 					} else {
 						console.log('Error: distance is 0')
 					}
@@ -434,30 +473,30 @@ class Game {
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 
 					if (dt != 0) {
-						var v = this.player.getLinearVelocity();
-						var vx = v.x - this.player.velocity * vx2 / dt;
-						var vz = v.z - this.player.velocity * vz2 / dt;
+						var v = this.player.velocity;
+						var vx = v.x - this.player.acceleration * vx2 / dt;
+						var vz = v.z - this.player.acceleration * vz2 / dt;
 
 						var vel = Math.sqrt(vx * vx + vz * vz);
 						if (vel > maxVelocity) { // Limit velocity
-							vx = -vx2 / dt * maxVelocity
-							vz = -vz2 / dt * maxVelocity
+							vx = vx / vel * maxVelocity
+							vz = vz / vel * maxVelocity
 						}
-						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
-						this.player.setAngularVelocity(zeroVector);
+						this.player.velocity.set(vx, v.y, vz);
+						this.player.angularVelocity.set(0, 0, 0);
 					} else {
 						console.log('Error: distance is 0')
 					}
 				}
 				// Jumping
 				if (this.input.isKeyDown[' ']) {
-					var v = this.player.getLinearVelocity();
+					var v = this.player.velocity;
 					if (v.y < 0) v.y = 0;
 					//this.player.applyCentralImpulse(new THREE.Vector3(0, this.player.jumpVelocity, 0))
-					this.player.setLinearVelocity(new THREE.Vector3(v.x, this.player.jumpVelocity, v.z));
+					this.player.velocity.set(v.x, this.player.jumpVelocity, v.z);
 					this.player.jumping = true;
 				}
-			} else { // While the player is in the air, grand a small amount of influence
+			} else { // While the player is in the air, grant a small amount of influence
 				var influenceVelocity = 0.01;
 				// Moving forward
 				if (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']) {
@@ -465,7 +504,7 @@ class Game {
 					var vz2 = game.player.position.z - game.camera.position.z;
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
-						var v = this.player.getLinearVelocity();
+						var v = this.player.velocity;
 						var vx = v.x + influenceVelocity * vx2 / dt;
 						var vz = v.z + influenceVelocity * vz2 / dt;
 
@@ -474,7 +513,7 @@ class Game {
 						//	vx = vx2 / dt * this.player.maxVelocity
 						//	vz = vz2 / dt * this.player.maxVelocity
 						//}
-						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+						this.player.velocity.set(vx, v.y, vz);
 					} else {
 						console.log('Error: distance is 0')
 					}
@@ -485,7 +524,7 @@ class Game {
 					var vz2 = game.player.position.z - game.camera.position.z;
 					var dt = Math.sqrt(vx2 * vx2 + vz2 * vz2);
 					if (dt != 0) {
-						var v = this.player.getLinearVelocity();
+						var v = this.player.velocity;
 						var vx = v.x - influenceVelocity * vx2 / dt;
 						var vz = v.z - influenceVelocity * vz2 / dt;
 
@@ -494,7 +533,7 @@ class Game {
 						//	vx = -vx2 / dt * this.player.maxVelocity
 						//	vz = -vz2 / dt * this.player.maxVelocity
 						//}
-						this.player.setLinearVelocity(new THREE.Vector3(vx, v.y, vz));
+						this.player.velocity.set(vx, v.y, vz);
 					} else {
 						console.log('Error: distance is 0')
 					}
@@ -517,10 +556,10 @@ class Game {
 		// Update the server
 		if (this.currentFrameTime - this.lastServerUpdateTime >= 50) {
 			var p = this.player.position,
-				r = this.player.rotation,
-				lv = this.player.getLinearVelocity(),
-				av = this.player.getAngularVelocity();
-			this.socket.emit('update_player_state', [p.x, p.y, p.z, r.x, r.y, r.z, lv.x, lv.y, lv.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
+				q = this.player.quaternion,
+				v = this.player.velocity,
+				av = this.player.angularVelocity;
+			this.socket.emit('update_player_state', [p.x, p.y, p.z, q.x, q.y, q.z, q.w, v.x, v.y, v.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
 			this.lastServerUpdateTime = (new Date()).getTime();
 		}
 
@@ -538,7 +577,7 @@ class Game {
 	// Update a player's position, rotation, scale, and velocities
 	updatePlayerState(state) {
 		var name = state.shift();
-		if (typeof name != 'string' || state.length != 15) return;
+		if (typeof name != 'string' || state.length != 16) return;
 		if (this.player != null && name == this.player_name) return; // Ignore self
 
 		for (var item of state) { // If anything is not a number, ignore the message
@@ -546,32 +585,29 @@ class Game {
 		}
 
 		var p = this.players[name];
-		var l = state[12],
-			w = state[13],
-			h = state[14];
 		var color = 0xFFFFFF;
+		//[p.x, p.y, p.z, q.x, q.y, q.z, q.w, v.x, v.y, v.z, av.x, av.y, av.z, this.player.length, this.player.width, this.player.height]);
 		if (p === undefined) { // Create online player object
 			p = this.addPlayer(name, new THREE.Vector3(state[0], state[1], state[2]), {
-				l: l,
-				w: w,
-				h: h
-			}, new THREE.Vector3(state[3], state[4], state[5]), color);
-			p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
-			p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
+				l: state[13],
+				w: state[14],
+				h: state[15] // TODO: quaternion x,y,z,w: state[3], state[4], state[5], state[6]
+			}, new THREE.Vector3(0, 0, 0), color);
+			p.velocity.set(state[7], state[8], state[9]);
+			p.angularVelocity.set(state[10], state[11], state[12]);
 			this.players[name] = p;
 		} else { // Update player position
+			var l = state[13], w = state[14], h = state[15];
 			if (p.length != l || p.width != w || p.height != h) {
 				// One of the scales changed, we need to reset the player
 				p = this.players[name] = p.setScale(l, w, h);
 			}
 
-			p.__dirtyPosition = true;
 			p.position.set(state[0], state[1], state[2]);
-			p.__dirtyRotation = true;
-			p.rotation.set(state[3], state[4], state[5]);
+			p.quaternion.set(state[3], state[4], state[5], state[6]);
 			try {
-				p.setLinearVelocity(new THREE.Vector3(state[6], state[7], state[8]));
-				p.setAngularVelocity(new THREE.Vector3(state[9], state[10], state[11]));
+				p.velocity.set(state[7], state[8], state[9]);
+				p.angularVelocity.set(state[10], state[11], state[12]);
 			} catch (e) {}
 		}
 	}
@@ -583,19 +619,9 @@ class Game {
 		var dt = Math.sqrt(vx * vx + vz * vz);
 		var theta = Math.atan2(vx, vz);
 		if (theta < 0) theta += 2 * Math.PI;
-		this.player.rotation.x = 0; // Keep player upright
-		this.player.rotation.y = theta; // Facing against the camera
-		this.player.rotation.z = 0;
-		this.player.__dirtyRotation = true;
-	}
+		// Keep player upright, facing against the camera
+		this.player.quaternion.setFromEuler(0, theta, 0);
 
-	// Get/set gravity
-	get gravity() {
-		return this._gravity;
-	}
-	set gravity(vector) {
-		this._gravity = vector;
-		this.scene.setGravity(vector);
 	}
 
 	// Get/set paused
@@ -603,7 +629,7 @@ class Game {
 		return this._paused;
 	}
 	set paused(bool) {
-		if (!bool) this.scene.onSimulationResume();
+		//if (!bool) this.scene.onSimulationResume();
 		this._paused = bool;
 	}
 
@@ -673,7 +699,7 @@ class Game {
 
 		// Set the gravity
 		if (map['gravity'] !== undefined && map.gravity.length == 3) {
-			this.gravity = new THREE.Vector3(map.gravity[0], map.gravity[1], map.gravity[2]);
+			this.world.gravity.set(map.gravity[0], map.gravity[1], map.gravity[2]);
 		} else return false;
 
 		this.respawnHeight = Infinity;
@@ -700,6 +726,7 @@ class Game {
 		if (name.trim() == "") name = type; // Set the default to the type
 
 		switch (type) {
+			// 'cube', 'name', px, py, pz, length, width, height, rx, ry, rz, color, friction, restitution, mass
 			case 'cube':
 				if (object.length != 9) return false;
 				var position = object[2];
@@ -724,6 +751,7 @@ class Game {
 				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 				break;
 
+			// 'sphere', 'name', px, py, pz, radius, rx, ry, rz, color, friction, restitution, mass
 			case 'sphere':
 				if (object.length != 8) return false;
 				var position = object[2];
@@ -745,6 +773,37 @@ class Game {
 				this.addSphere(name, positionVector, rotationVector, radius, color, friction, restitution, mass);
 
 				var minHeight = positionVector.y - radius;
+				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
+				break;
+
+			// 'cylinder', 'name', [px, py, pz], radiusTop, radiusBottom, height, numSegments, [rx, ry, rz], color, friction, restitution, mass
+			case 'cylinder':
+				if (object.length != 12) return false;
+				var position = object[2];
+				if (position.length != 3) return false;
+				var positionVector = new THREE.Vector3(position[0], position[1], position[2])
+				var radiusTop = object[3];
+				if (typeof radiusTop != 'number') return false;
+				var radiusBottom = object[4];
+				if (typeof radiusBottom != 'number') return false;
+				var height = object[5];
+				if (typeof height != 'number') return false;
+				var numSegments = object[6];
+				if (typeof numSegments != 'number') return false;
+				var rotation = object[7];
+				if (rotation.length != 3) return false;
+				var rotationVector = new THREE.Vector3(rotation[0], rotation[1], rotation[2])
+				var color = object[8];
+				if (typeof color != 'string') return false;
+				var friction = object[9];
+				if (typeof friction != 'number') return false;
+				var restitution = object[10];
+				if (typeof restitution != 'number') return false;
+				var mass = object[11];
+				if (typeof mass != 'number') return false;
+				this.addCylinder(name, positionVector, radiusTop, radiusBottom, height, numSegments, rotationVector, color, friction, restitution, mass);
+
+				var minHeight = positionVector.y - scale[1] / 2;
 				if (minHeight < this.respawnHeight) this.respawnHeight = minHeight;
 				break;
 
@@ -826,13 +885,23 @@ class Game {
 		return true;
 	}
 
+	// Add an object to the world
 	add(object) {
 		if (object == null || object === undefined) return;
-		this.scene.add(object);
-		//object.__dirtyPosition = true;
-		//object.__dirtyRotation = true;
+
+		if(object instanceof CANNON.Body) {
+			this.world.addBody(object);
+		}
+
+		if(object instanceof THREE.Object3D) {
+			this.scene.add(object);
+		} else if(object.mesh instanceof THREE.Object3D) {
+			this.scene.add(object.mesh);
+		}
+		
 	}
 
+	// Remove an object from the world
 	remove(object) {
 		let index = this.objects.indexOf(object);
 		if(index > -1) this.objects.splice(index, 1);
@@ -840,59 +909,143 @@ class Game {
 		if (object.label != null || object.label !== undefined) {
 			this.scene.remove(object.label)
 		}
-		//object.__dirtyPosition = true;
 		//object.position.set(0, 300, 0);
 		//object.visible = false;
+		this.scene.remove(object.mesh);
 		this.scene.remove(object);
-		object.geometry.dispose();
-		object.material.dispose();
+		this.world.removeBody(object);
+		//object.geometry.dispose();
+		//object.material.dispose();
 		//this.renderer.renderLists.dispose();
 		return true;
 	}
 
+	// Display a bounding box around a mesh, with a specified color
+	showBoundingBox(mesh, color) {
+		if(!mesh.boundingBox) {
+			if(!mesh.geometry) return false;
+			if(mesh.geometry.boundingBox == null) {
+				mesh.geometry.computeBoundingBox();
+			}
+			var box = mesh.geometry.boundingBox;
+			// box = new THREE.Box3().setFromObject(mesh);
+			var helper = new THREE.Box3Helper(box, color);
+			helper.material.linewidth = 20;
+			mesh.add(helper);
+			mesh.boundingBox = helper;
+		} else {
+			mesh.boundingBox.material.color.setHex(color);
+			mesh.boundingBox.visible = true;
+		}
+		return true;
+	}
+
+	// Hide a bounding box if it exists
+	hideBoundingBox(mesh) {
+		if(!mesh.boundingBox) return false;
+		mesh.remove(mesh.boundingBox);
+		mesh.boundingBox = null;
+		return true;
+	}
+
 	addCube(name, position, scale, rotation, color, friction, restitution, mass) {
-		var cube = new Physijs.BoxMesh(
-			new THREE.CubeGeometry(scale[0], scale[1], scale[2]),
-			Physijs.createMaterial(new THREE.MeshStandardMaterial({
-				color: new THREE.Color(color),
-				roughness: 0.5
-			}), friction, restitution),
-			mass
-		);
+		// TODO add scale and other attributes
+		var material = new THREE.MeshStandardMaterial({
+			color: new THREE.Color(color),
+			roughness: 0.5,
+			flatShading: true,
+		});
+		var halfExtents = new CANNON.Vec3(scale[0] / 2, scale[1] / 2, scale[2] / 2);
+		var cubeShape = new CANNON.Box(halfExtents);
+		var cubeGeometry = new THREE.BoxGeometry(scale[0], scale[1], scale[2]);
+		var cube = new CANNON.Body({
+			mass: mass
+		});
 		cube.meshName = name;
 		cube.meshType = 'cube';
+		cube.addShape(cubeShape);
+		var cubeMesh = new THREE.Mesh(cubeGeometry, material);
+
 		cube.position.set(position.x, position.y, position.z);
-		cube.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
-		cube.receiveShadow = true;
-		cube.castShadow = true;
+		cubeMesh.position.set(position.x, position.y, position.z);
+		var rx = THREE.Math.degToRad(rotation.x), ry = THREE.Math.degToRad(rotation.y), rz = THREE.Math.degToRad(rotation.z);
+		cube.quaternion.setFromEuler(rx, ry, rz);
+		//cubeMesh.castShadow = true;
+		//cubeMesh.receiveShadow = true;
+
+		cube.mesh = cubeMesh;
 		this.objects.push(cube);
-		this.add(cube);
+		this.add(cube)
 		return cube;
 	}
 
 	addSphere(name, position, radius, rotation, color, friction, restitution, mass) {
-		var sphere = new Physijs.SphereMesh(
-			new THREE.SphereGeometry(radius),
-			Physijs.createMaterial(new THREE.MeshStandardMaterial({
-				color: new THREE.Color(color),
-				roughness: 0.5,
-				flatShading: true,
-			}), friction, restitution),
-			mass
-		);
+		var material = new THREE.MeshStandardMaterial({
+			color: new THREE.Color(color),
+			roughness: 0.5,
+			flatShading: true,
+		});
+		var sphereShape = new CANNON.Sphere(radius);
+		var sphereGeometry = new THREE.SphereGeometry(sphereShape.radius, 32, 32);
+		var sphere = new CANNON.Body({
+			mass: mass
+		});
 		sphere.meshName = name;
 		sphere.meshType = 'sphere';
+		sphere.addShape(sphereShape);
+		var sphereMesh = new THREE.Mesh(sphereGeometry, material);
+
 		sphere.position.set(position.x, position.y, position.z);
-		sphere.rotation.set(THREE.Math.degToRad(rotation.x), THREE.Math.degToRad(rotation.y), THREE.Math.degToRad(rotation.z));
-		sphere.receiveShadow = true;
-		sphere.castShadow = true;
+		sphereMesh.position.set(position.x, position.y, position.z);
+		var rx = THREE.Math.degToRad(rotation.x), ry = THREE.Math.degToRad(rotation.y), rz = THREE.Math.degToRad(rotation.z);
+		sphere.quaternion.setFromEuler(rx, ry, rz);
+		//sphereMesh.castShadow = true;
+		//sphereMesh.receiveShadow = true;
+
+		sphere.mesh = sphereMesh;
 		this.objects.push(sphere);
 		this.add(sphere);
 		return sphere;
 	}
 
+	addCylinder(name, position, radiusTop, radiusBottom, height, numSegments, rotation, color, friction, restitution, mass) {
+		var material = new THREE.MeshStandardMaterial({
+			color: new THREE.Color(color),
+			roughness: 0.5,
+			flatShading: true,
+		});
+		var cylinderShape = new CANNON.Cylinder(radiusTop, radiusBottom, height, numSegments);
+		var cylinderGeometry = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, numSegments);
+		var cylinder = new CANNON.Body({
+			mass: mass
+		});
+		cylinder.meshName = name;
+		cylinder.meshType = 'cylinder';
+		cylinder.addShape(cylinderShape);
+		var cylinderMesh = new THREE.Mesh(cylinderGeometry, material);
+
+		cylinder.position.set(position.x, position.y, position.z);
+		cylinderMesh.position.set(position.x, position.y, position.z);
+		var rx = THREE.Math.degToRad(rotation.x), ry = THREE.Math.degToRad(rotation.y), rz = THREE.Math.degToRad(rotation.z);
+		cylinder.quaternion.setFromEuler(rx, ry, rz);
+		//cylinderMesh.castShadow = true;
+		//cylinderMesh.receiveShadow = true;
+
+		cylinder.mesh = cylinderMesh;
+		this.objects.push(cylinder);
+		this.add(cylinder);
+		return cylinder;
+	}
+
 	// TODO: Apply scale, rotation, ...
-	addPlayer(name, position, scale, rotation, color, friction = 0.8, restitution = 0.1, mass = 30) {
+	addPlayer(name, position, scale, rotation, color, friction = 0.8, restitution = 0.1, mass = 10) {
+		var material = new THREE.MeshBasicMaterial({
+			color: new THREE.Color(color)
+		});
+
+		var halfExtents = new CANNON.Vec3(scale.w / 2, scale.h / 2, scale.l / 2);
+		var cubeShape = new CANNON.Box(halfExtents);
+
 		var playerGeometry = new THREE.Geometry();
 		playerGeometry.vertices = [
 			new THREE.Vector3(-scale.w / 2, -scale.h / 2, 0),
@@ -909,40 +1062,43 @@ class Game {
 			new THREE.Face3(3, 2, 4),
 			new THREE.Face3(0, 3, 4)
 		];
-		var playerMaterial = new THREE.MeshBasicMaterial({
-			color: new THREE.Color(color)
-		});
-		//playerMaterial.depthTest = false;
+		playerGeometry.computeBoundingBox();
 
-		var player = new Physijs.BoxMesh(
-			playerGeometry,
-			Physijs.createMaterial(playerMaterial, friction, restitution),
-			mass
-		);
+		var player = new CANNON.Body({
+			mass: mass
+		});
 		player.meshName = name;
 		player.meshType = 'player';
-		player.position.set(position.x, position.y, position.z);
-		player.castShadow = true;
 		player.length = scale.l;
 		player.width = scale.w;
 		player.height = scale.h;
+		player.addShape(cubeShape);
+		var playerMesh = new THREE.Mesh(playerGeometry, material);
 
+		player.position.set(position.x, position.y, position.z);
+		playerMesh.position.set(position.x, position.y, position.z);
+		var rx = THREE.Math.degToRad(rotation.x), ry = THREE.Math.degToRad(rotation.y), rz = THREE.Math.degToRad(rotation.z);
+		player.quaternion.setFromEuler(rx, ry, rz);
+		//playerMesh.castShadow = true;
+		//playerMesh.receiveShadow = true;
 		var _color = this.strColor(name);
-		player.label = new THREE.TextSprite({
+
+		playerMesh.label = new THREE.TextSprite({
 			text: name,
 			fontFamily: 'Helvetica, Arial, sans-serif',
-			fontSize: 1.8,
+			fontSize: 0.4,
 			fillColor: 0xFFFFFF,
 		});
-		player.label.position.set(0, player.height / 2 + 2, 0);
-		player.label.material.depthTest = false;
-		player.add(player.label);
+		playerMesh.label.position.set(0, scale.h / 2 + 0.4, 0);
+		playerMesh.label.material.depthTest = false;
+		playerMesh.add(playerMesh.label);
 
-		this.add(player);
+		player.mesh = playerMesh;
 
-		// A function for setting the scale of non-main players
-		// (i.e. not the main game.player, because it has special added functions)
 		player.setScale = (l, w, h) => {
+			//player.shape.halfExtents.x = w / 2;
+			//player.shape.halfExtents.y = h / 2;
+			//player.shape.halfExtents.z = l / 2;
 			var scale = {
 				l: l,
 				w: w,
@@ -952,10 +1108,44 @@ class Game {
 			player = this.addPlayer(name, position, scale, rotation, color, friction, restitution, mass);
 			return player;
 		}
+
+		this.add(player);
 		return player;
 	}
 
 	addPlane(name, position, width, height, rotation, color, friction, restitution) {
+		var material = new THREE.MeshStandardMaterial({
+			color: new THREE.Color(color),
+			roughness: 0.5,
+			flatShading: true,
+		});
+		var planeShape = new CANNON.Plane();
+		//var planeGeometry = new THREE.PlaneGeometry();
+		var plane = new CANNON.Body({
+			mass: 0
+		});
+		plane.meshName = name;
+		plane.meshType = 'plane';
+		plane.addShape(planeShape);
+		//var planeMesh = new THREE.Mesh(planeGeometry, material);
+
+		this.world.addBody(plane);
+		//this.scene.add(planeMesh);
+
+		/*planeBody.position.set(position.x, position.y, position.z);
+		planeMesh.position.set(position.x, position.y, position.z);
+		var rx = THREE.Math.degToRad(rotation.x), ry = THREE.Math.degToRad(rotation.y), rz = THREE.Math.degToRad(rotation.z);
+		//planeBody.rotation.set(rx, ry, rz);
+		planeMesh.rotation.set(rx, ry, rz);
+		planeMesh.castShadow = true;
+		planeMesh.receiveShadow = true;
+		console.log('plane body');
+		console.log(planeBody);
+		console.log('mesh');
+		console.log(planeMesh);
+		this.objects.push(planeBody);*/
+
+		/*
 		var plane = new Physijs.PlaneMesh(
 			new THREE.PlaneGeometry(width, height),
 			Physijs.createMaterial(new THREE.MeshStandardMaterial({
@@ -972,7 +1162,7 @@ class Game {
 		plane.castShadow = true;
 		this.objects.push(plane);
 		this.add(plane);
-		return plane;
+		return plane;*/
 	}
 
 	addSkybox(name, texture, fileType, size) {
@@ -1004,6 +1194,7 @@ class Game {
 		var skybox = new THREE.Mesh(skyboxGeometry, materialArray);
 		skybox.meshName = name;
 		skybox.meshType = 'skybox';
+
 		this.sky = skybox;
 		this.add(skybox);
 		return skybox;
@@ -1032,20 +1223,13 @@ class Game {
 		var light = new THREE.DirectionalLight(0xFFFFFF, intensity);
 		light.meshName = name;
 		light.meshType = 'directionallight';
-		
-		light.shadow.mapSize.width = 512;  // default
-		light.shadow.mapSize.height = 512; // default
-		light.shadow.camera.near = 0.5;    // default
-		light.shadow.camera.far = 500;     // default
+
+		//light.shadow.mapSize.width = 512;  // default
+		//light.shadow.mapSize.height = 512; // default
+		//light.shadow.camera.near = 0.5;    // default
+		//light.shadow.camera.far = 500;     // default
+
 		//light.castShadow = true;
-		//light.shadow.mapSize.width = 512;
-		//light.shadow.mapSize.height = 512;
-		//light.shadow.camera.near = 0.5;
-		//light.shadow.camera.far = 500
-
-
-
-		light.castShadow = true;
 		/*
 		light.shadow.camera = new THREE.CameraHelper(light.shadow.camera)
 		light.mapSize.width = light.mapSize.height = 2048;

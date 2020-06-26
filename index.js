@@ -159,7 +159,7 @@ io.on('connection', (socket) => {
 	})
 
 	socket.on('update_player_state', (state) => {
-		if(!socket.initialized || state.length != 15) { // Misbehaving
+		if(!socket.initialized || state.length != 16) { // Misbehaving
 			console.log('Player misbehaving: ' + socket.name);
 			socket.disconnect();
 			return;
