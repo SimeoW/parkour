@@ -70,7 +70,7 @@ class Game {
 		this.input = new Input(window);
 		// Used to orbit the camera around the player
 		this.controls = new THREE.CameraOrbit(this.renderer, this.scene, this.camera);
-		this.controls.smoothing = 3;
+		this.controls.smoothing = 0;
 		// The skybox in the world
 		this.sky = this.addSkybox('', 'nebula', 'png', 5000);
 		// Used to pause the physics engine
@@ -98,7 +98,7 @@ class Game {
 		this.socket = io();
 		this.socket.emit('initialize', player_name, server_name);
 		//this.socket.emit('list');
-		this.addChatMessage('', 'Type "\\help" for help')
+		this.addChatMessage('', 'Type "/help" for help')
 
 		this.socket.on('map', function(name, players, map) {
 			this.player_name = name;
@@ -151,7 +151,7 @@ class Game {
 	}
 
 	chat(msg) {
-		if (msg.startsWith('/') || msg.startsWith('\\')) {
+		if (msg.startsWith('/') || msg.startsWith('/')) {
 			var cmd = msg.substring(1);
 			var words = cmd.split(/\s+/);
 			if (words.length == 0) return;
@@ -169,16 +169,16 @@ class Game {
 					html += '<br>• T, ENTER <span style="color: #FFF76B">: Chat</span>';
 
 					html += '<hr>The chat commands are as follows (~ can be anything):';
-					html += '<br>• \\help <span style="color: #FFF76B">: List the available commands</span>';
-					html += '<br>• \\fov ~<span style="color: #FFF76B">: Set the camera\'s field of view</span>';
-					html += '<br>• \\list <span style="color: #FFF76B">: List the players currently on the server</span>';
-					html += '<br>• \\pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
-					html += '<br>• \\rename<span style="color: #FFF76B">: Rename your character</span>';
-					html += '<br>• \\reset <span style="color: #FFF76B">: Respawn</span>';
-					html += '<br>• \\scale ~ ~ ~<span style="color: #FFF76B">: Set your (length, width, height)</span>';
-					html += '<br>• \\server SERVER_NAME<span style="color: #FFF76B">: Move to a new server</span>';
-					html += '<br>• \\servers<span style="color: #FFF76B">: List the currently active servers</span>';
-					html += '<br>• \\tp PLAYER_NAME<span style="color: #FFF76B">: Teleport to a player</span>';
+					html += '<br>• /help <span style="color: #FFF76B">: List the available commands</span>';
+					html += '<br>• /fov ~<span style="color: #FFF76B">: Set the camera\'s field of view</span>';
+					html += '<br>• /list <span style="color: #FFF76B">: List the players currently on the server</span>';
+					html += '<br>• /pause <span style="color: #FFF76B">: Toggle the paused game state</span>';
+					html += '<br>• /rename<span style="color: #FFF76B">: Rename your character</span>';
+					html += '<br>• /reset <span style="color: #FFF76B">: Respawn</span>';
+					html += '<br>• /scale ~ ~ ~<span style="color: #FFF76B">: Set your (length, width, height)</span>';
+					html += '<br>• /server SERVER_NAME<span style="color: #FFF76B">: Move to a new server</span>';
+					html += '<br>• /servers<span style="color: #FFF76B">: List the currently active servers</span>';
+					html += '<br>• /tp PLAYER_NAME<span style="color: #FFF76B">: Teleport to a player</span>';
 					html += '<br>';
 					html += '<br>';
 					this.addChatMessage('', html, '#FFFFFF');
@@ -277,7 +277,7 @@ class Game {
 					this.player.position.set(player.position.x + Math.random() * 2 - 1, player.position.y + Math.random() * 2 - 1, player.position.z + Math.random() * 2 - 1);
 					break;
 				default:
-					this.addChatMessage('', 'Command not found, type \\help for more information', '#FF4949');
+					this.addChatMessage('', 'Command not found, type /help for more information', '#FF4949');
 			}
 			document.getElementById('chat').blur();
 		} else {
@@ -435,7 +435,14 @@ class Game {
 				if (this.input.isKeyDown['shift']) maxVelocity *= 1.25;
 				// Moving forward
 				var forward = (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']);
-				if(this.input.isTouching && this.input.mouseY < this.height / 4) forward = true;
+				var backward = (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']);
+				var jumping = this.input.isKeyDown[' '];
+
+				// Mobile device controls
+				if(this.input.isTouching && this.input.mouseY < this.height / 4) { forward = true; jumping = true; }
+				if(this.input.isTouching && this.input.mouseY > this.height - this.height / 4) backward = true;
+				
+
 				if (forward) {
 					this.updatePlayerRotation();
 
@@ -464,8 +471,6 @@ class Game {
 					}
 				}
 				// Moving backward
-				var backward = (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']);
-				if(this.input.isTouching && this.input.mouseY > this.height - this.height / 4) backward = true;
 				if (backward) {
 					this.updatePlayerRotation();
 
@@ -491,7 +496,7 @@ class Game {
 					}
 				}
 				// Jumping
-				if (this.input.isKeyDown[' ']) {
+				if (jumping) {
 					var v = this.player.velocity;
 					if (v.y < 0) v.y = 0;
 					//this.player.applyCentralImpulse(new THREE.Vector3(0, this.player.jumpVelocity, 0))
