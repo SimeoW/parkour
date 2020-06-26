@@ -439,11 +439,14 @@ class Game {
 				var jumping = this.input.isKeyDown[' '];
 
 				// Mobile device controls
-				if(this.input.isTouching && this.input.mouseY < this.height / 4) { forward = true; jumping = true; }
-				if(this.input.isTouching && this.input.mouseY > this.height - this.height / 4) backward = true;
-				
+				if(this.input.isTouching) {
+					if(this.input.mouseStartY < this.height / 4) forward = true;
+					else if(this.input.mouseStartY >= this.height / 4 && this.input.mouseStartY < this.height - this.height / 4) jumping = true;
+					else if(this.input.mouseStartY >= this.height - this.height / 4) backward = true;
+				}
 
 				if (forward) {
+					backward = false; // Can't have both
 					this.updatePlayerRotation();
 
 					// 2D angle
