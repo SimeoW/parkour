@@ -61,11 +61,6 @@ class Game {
 		}
 		// The padding underneath the lowest object where the player respawns
 		this.respawnHeightPadding = 10;
-
-		// How large each chunk is
-		this.chunkSize = 64;
-		// Radius of how many away from the player to generate
-		this.chunkRadius = 2;
 		// The chunk management system
 		this.chunkManager = null;
 		// Used for keyboard and mouse user input
@@ -1062,7 +1057,6 @@ class Game {
 			new THREE.Face3(3, 2, 4),
 			new THREE.Face3(0, 3, 4)
 		];
-		playerGeometry.computeBoundingBox();
 
 		var player = new CANNON.Body({
 			mass: mass
@@ -1082,7 +1076,11 @@ class Game {
 		//playerMesh.castShadow = true;
 		//playerMesh.receiveShadow = true;
 		var _color = this.strColor(name);
+		// Glow
+		playerMesh.glow = this.addPointLight(name, zeroVector, _color, 3, 100);
+		playerMesh.add(playerMesh.glow);
 
+		// Name
 		playerMesh.label = new THREE.TextSprite({
 			text: name,
 			fontFamily: 'Helvetica, Arial, sans-serif',

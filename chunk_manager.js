@@ -107,9 +107,9 @@ class ChunkManager {
 					var p = this.chunkToPosition(px, py, pz);
 					var position = new THREE.Vector3(p.x, p.y, p.z);
 					var rotation = new THREE.Vector3(random.random() * 360, random.random() * 360, random.random() * 360);
-					var radiusTop = this.chunkSize / grid / 2;
-					var radiusBottom = this.chunkSize / grid / 4;
-					var height = this.chunkSize / grid / 2;
+					var radiusTop = random.random() * this.chunkSize / grid / 2;
+					var radiusBottom = random.random() * this.chunkSize / grid / 2;
+					var height = random.random() * this.chunkSize / grid * 2;
 					var numSegments = 20;
 					var color = 'hsl(' + Math.floor(Math.abs(this.simplex.noise3d(px / 20, 100, pz / 20) * 360)) + ', 75%, 50%)';
 					var friction = 0.9;
