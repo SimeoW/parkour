@@ -151,9 +151,11 @@
 		// On window resize, resize the renderer as well
 		window.addEventListener('resize', onWindowResize, false);
 		function onWindowResize(){
-			game.camera.aspect = window.innerWidth / window.innerHeight;
+			game.width = window.innerWidth;
+			game.height = window.innerHeight
+			game.camera.aspect = game.width / game.height;
 			game.camera.updateProjectionMatrix();
-			game.renderer.setSize(window.innerWidth, window.innerHeight);
+			game.renderer.setSize(game.width, game.height);
 		}
 	</script>
 </html>

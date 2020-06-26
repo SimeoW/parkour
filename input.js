@@ -27,6 +27,7 @@ class Input {
 		this.isLeftDown = false;
 		this.isMiddleDown = false;
 		this.isRightDown = false;
+		this.isTouching = false;
 
 		this.mouseX = 0;
 		this.mouseY = 0;
@@ -153,6 +154,7 @@ class Input {
 		//this.mouseX = 0;
 		//this.mouseY = 0;
 		this.isLeftDown = true;
+		this.isTouching = true;
 		if(e.touches.length > 1) return multiTouchStart(e);
 	}
 
@@ -182,6 +184,7 @@ class Input {
 		this.mouseY = 0;
 		this.scrollDist = 0;
 		this.isLeftDown = false;
+		this.isTouching = false;
 	}
 
 	touchMove(e) {

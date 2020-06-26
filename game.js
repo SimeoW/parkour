@@ -431,7 +431,9 @@ class Game {
 				var maxVelocity = this.player.maxVelocity;
 				if (this.input.isKeyDown['shift']) maxVelocity *= 1.25;
 				// Moving forward
-				if (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']) {
+				var forward = (this.input.isKeyDown['arrowup'] || this.input.isKeyDown['w']);
+				if(this.input.isTouching && this.input.mouseY < this.height / 4) forward = true;
+				if (forward) {
 					this.updatePlayerRotation();
 
 					// 2D angle
@@ -459,7 +461,9 @@ class Game {
 					}
 				}
 				// Moving backward
-				if (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']) {
+				var backward = (this.input.isKeyDown['arrowdown'] || this.input.isKeyDown['s']);
+				if(this.input.isTouching && this.input.mouseY > this.height - this.height / 4) backward = true;
+				if (backward) {
 					this.updatePlayerRotation();
 
 					// 2D angle
@@ -1064,7 +1068,7 @@ class Game {
 		player.meshName = name;
 		player.meshType = 'player';
 		player.length = scale.l;
-		player.width = scale.w;
+		player.width = scwale.w;
 		player.height = scale.h;
 		player.addShape(cubeShape);
 		var playerMesh = new THREE.Mesh(playerGeometry, material);
