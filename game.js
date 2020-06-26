@@ -1068,7 +1068,7 @@ class Game {
 		player.meshName = name;
 		player.meshType = 'player';
 		player.length = scale.l;
-		player.width = scwale.w;
+		player.width = scale.w;
 		player.height = scale.h;
 		player.addShape(cubeShape);
 		var playerMesh = new THREE.Mesh(playerGeometry, material);
