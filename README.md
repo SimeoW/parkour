@@ -7,3 +7,5 @@ Currently under development. This is the sequel to [3D
 - Procedural server allocation
 - Chat box with commands
 - Multiplayer through a socket.io connection
+
+This is hosted at [http://worldv.herokuapp.com](http://worldv.herokuapp.com).
